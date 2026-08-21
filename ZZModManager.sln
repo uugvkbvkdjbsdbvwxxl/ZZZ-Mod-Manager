@@ -1,0 +1,27 @@
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.0.31903.59
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ZZZModManager", "src\ZZZModManager\ZZZModManager.csproj", "{D3F17A01-9D0A-48B8-BE9D-9EA9CB8FAF10}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ZZZModManager.Tests", "tests\ZZZModManager.Tests\ZZZModManager.Tests.csproj", "{B9C92DA5-5E25-4EA5-93C1-8E1B9A8E0CB0}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{D3F17A01-9D0A-48B8-BE9D-9EA9CB8FAF10}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{D3F17A01-9D0A-48B8-BE9D-9EA9CB8FAF10}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{D3F17A01-9D0A-48B8-BE9D-9EA9CB8FAF10}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{D3F17A01-9D0A-48B8-BE9D-9EA9CB8FAF10}.Release|Any CPU.Build.0 = Release|Any CPU
+		{B9C92DA5-5E25-4EA5-93C1-8E1B9A8E0CB0}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{B9C92DA5-5E25-4EA5-93C1-8E1B9A8E0CB0}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{B9C92DA5-5E25-4EA5-93C1-8E1B9A8E0CB0}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{B9C92DA5-5E25-4EA5-93C1-8E1B9A8E0CB0}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+EndGlobal

@@ -1,0 +1,50 @@
+namespace ZZZModManager.Infrastructure;
+
+public sealed class AppPaths
+{
+    private const string PreferredRoot = @"D:\ZZZMod";
+
+    public string Root { get; }
+    public string ModsRoot => Path.Combine(Root, "Mods");
+    public string StagingRoot => Path.Combine(Root, "Staging");
+    public string BackupsRoot => Path.Combine(Root, "Backups");
+    public string LogsRoot => Path.Combine(Root, "Logs");
+    public string DependenciesRoot => Path.Combine(Root, "Dependencies");
+    public string RuntimeRoot => Path.Combine(Root, "Runtime", "ZZMI");
+    public string UiRoot => Path.Combine(Root, "UI");
+    public string ConfigFile => Path.Combine(Root, "config.json");
+    public string LibraryFile => Path.Combine(Root, "library.json");
+    public string RuntimeManifestFile => Path.Combine(Root, "runtime-manifest.json");
+
+    public AppPaths(string? root = null)
+    {
+        Root = root ?? ResolveDefaultRoot();
+    }
+
+    private static string ResolveDefaultRoot()
+    {
+        // This installation is intentionally self-contained on D:. Do not silently
+        // recreate configuration, logs or runtime files under LocalAppData.
+        return PreferredRoot;
+    }
+
+    public void Ensure()
+    {
+        Directory.CreateDirectory(Root);
+        Directory.CreateDirectory(ModsRoot);
+        Directory.CreateDirectory(StagingRoot);
+        Directory.CreateDirectory(BackupsRoot);
+        Directory.CreateDirectory(LogsRoot);
+        Directory.CreateDirectory(DependenciesRoot);
+        Directory.CreateDirectory(RuntimeRoot);
+        Directory.CreateDirectory(UiRoot);
+    }
+
+    public string CreateStagingDirectory()
+    {
+        Ensure();
+        var path = Path.Combine(StagingRoot, $"import-{DateTime.UtcNow:yyyyMMddHHmmss}-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(path);
+        return path;
+    }
+}

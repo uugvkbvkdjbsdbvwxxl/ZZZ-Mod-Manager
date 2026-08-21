@@ -1,0 +1,551 @@
+using System.Collections.ObjectModel;
+using System.Diagnostics;
+using System.Text;
+using System.Windows;
+using System.Windows.Controls;
+using System.Windows.Input;
+using System.Windows.Media;
+using System.Windows.Media.Imaging;
+using ZZZModManager.Models;
+using ZZZModManager.Services;
+
+namespace ZZZModManager;
+
+public partial class MainWindow
+{
+    private void RefreshView()
+    {
+        _library.GetAvailableCharacterGroups();
+        var manifests = _library.GetAll().ToList();
+        var missingByMod = _dependencyResolver.GetMissingDependencies(manifests);
+        var cards = manifests.Select(manifest =>
+        {
+            var path = _library.GetAbsolutePath(manifest);
+            var missing = missingByMod.TryGetValue(manifest.Id, out var dependencies) ? dependencies : [];
+            _runtimeStates.TryGetValue(manifest.Id, out var runtimeState);
+            var character = _library.DetectCharacterGroup(manifest);
+            return new ModCardViewModel(manifest, path, missing, runtimeState, _liveSwitch, character);
+        }).ToList();
+
+        RebuildCharacterFilters(cards);
+        var search = SearchBox?.Text.Trim() ?? string.Empty;
+        var status = (StatusFilterCombo?.SelectedItem as ComboBoxItem)?.Tag as string ?? "All";
+        var filtered = cards.Where(card =>
+            MatchesCharacterFilter(card)
+            && card.MatchesSearch(search)
+            && card.MatchesStatus(status)).ToList();
+
+        _visibleGroups.Clear();
+        foreach (var group in filtered
+                     .GroupBy(card => card.Character.Key, StringComparer.OrdinalIgnoreCase)
+                     .Select(group => new ModGroupViewModel(group.First().Character.DisplayName, group.ToList()))
+                     .OrderBy(group => group.SortOrder)
+                     .ThenBy(group => group.DisplayName, StringComparer.CurrentCultureIgnoreCase))
+        {
+            _visibleGroups.Add(group);
+        }
+
+        FilterResultText.Text = $"{filtered.Count} 个结果";
+        EmptyStateText.Text = manifests.Count == 0
+            ? "还没有导入 Mod；可以在设置页拖入压缩包或文件夹。"
+            : "当前筛选没有结果，请清除搜索、角色或状态筛选。";
+        EmptyStateBorder.Visibility = filtered.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
+        StatusText.Text = $"Mod 库：{_paths.ModsRoot}    ·    {manifests.Count} 个 Mod    ·    {manifests.Count(mod => mod.Enabled)} 个已启用";
+    }
+
+    private void RebuildCharacterFilters(IReadOnlyList<ModCardViewModel> cards)
+    {
+        var items = new List<(string Key, string Name, int Enabled, int Total)>
+        {
+            ("all", "全部", cards.Count(card => card.Manifest.Enabled), cards.Count)
+        };
+        items.AddRange(cards
+            .Where(card => CharacterGroupDetector.IsRoleGroup(card.Character.Kind))
+            .GroupBy(card => card.Character.Key, StringComparer.OrdinalIgnoreCase)
+            .Select(group => (group.Key, group.First().Character.DisplayName, group.Count(card => card.Manifest.Enabled), group.Count()))
+            .OrderBy(item => item.DisplayName, StringComparer.CurrentCultureIgnoreCase));
+
+        var frameworks = cards.Where(card => card.Character.Kind == CharacterGroupKind.Framework).ToList();
+        if (frameworks.Count > 0)
+        {
+            items.Add(("framework", "通用依赖", frameworks.Count(card => card.Manifest.Enabled), frameworks.Count));
+        }
+
+        var unknown = cards.Where(card => card.Character.Kind == CharacterGroupKind.Unknown).ToList();
+        if (unknown.Count > 0)
+        {
+            items.Add(("unknown", "未识别", unknown.Count(card => card.Manifest.Enabled), unknown.Count));
+        }
+
+        if (!items.Any(item => string.Equals(item.Key, _selectedCharacterKey, StringComparison.OrdinalIgnoreCase)))
+        {
+            _selectedCharacterKey = "all";
+        }
+
+        _characterFilters.Clear();
+        foreach (var item in items)
+        {
+            _characterFilters.Add(new CharacterFilterItem(
+                item.Key,
+                item.Name,
+                item.Enabled,
+                item.Total,
+                string.Equals(item.Key, _selectedCharacterKey, StringComparison.OrdinalIgnoreCase)));
+        }
+    }
+
+    private bool MatchesCharacterFilter(ModCardViewModel card) =>
+        _selectedCharacterKey == "all"
+        || (_selectedCharacterKey == "unknown" && card.Character.Kind == CharacterGroupKind.Unknown)
+        || string.Equals(card.Character.Key, _selectedCharacterKey, StringComparison.OrdinalIgnoreCase);
+
+    private void CharacterFilter_Click(object sender, RoutedEventArgs e)
+    {
+        if ((sender as Button)?.Tag is string key)
+        {
+            _selectedCharacterKey = key;
+            RefreshView();
+        }
+    }
+
+    private void ClearFilters_Click(object sender, RoutedEventArgs e)
+    {
+        _selectedCharacterKey = "all";
+        SearchBox.Clear();
+        StatusFilterCombo.SelectedIndex = 0;
+        RefreshView();
+    }
+
+    private void SearchBox_TextChanged(object sender, TextChangedEventArgs e)
+    {
+        if (_library is not null)
+        {
+            RefreshView();
+        }
+    }
+
+    private void StatusFilter_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (_library is not null)
+        {
+            RefreshView();
+        }
+    }
+
+    private async void ToggleMod_Click(object sender, RoutedEventArgs e)
+    {
+        if ((sender as Button)?.Tag is not ModCardViewModel card || _busy)
+        {
+            return;
+        }
+
+        var enable = !card.Manifest.Enabled;
+        if (enable && card.MissingDependencies.Count > 0)
+        {
+            ShowToast($"缺少依赖：{string.Join("、", card.MissingDependencies)}。请先在设置页导入依赖。", true);
+            return;
+        }
+
+        SetBusy(true, enable ? $"正在启用 {card.DisplayName}…" : $"正在禁用 {card.DisplayName}…");
+        var result = await Task.Run(() => _stateCoordinator.ApplyState(
+            card.Manifest.Id,
+            enable,
+            restoreManagerWindow: !_config.AutoHideAfterLiveSwitch,
+            allowReload: _config.ReloadWhenRequired));
+        ApplyRuntimeResult(result);
+        SetBusy(false);
+        RefreshView();
+        var error = result.Application == ModStateApplication.Failed
+                    || (result.GameRunning && result.Application == ModStateApplication.Pending);
+        ShowToast(result.Message, error);
+        if (result.Succeeded && result.GameRunning && _config.AutoHideAfterLiveSwitch)
+        {
+            HideManagerWindow();
+        }
+    }
+
+    private void ApplyRuntimeResult(ModStateChangeResult result)
+    {
+        foreach (var manifest in result.ChangedMods.Concat(result.AutomaticallyDisabled)
+                     .DistinctBy(manifest => manifest.Id, StringComparer.OrdinalIgnoreCase))
+        {
+            _runtimeStates[manifest.Id] = new RuntimeCardState(result.Application, result.Message);
+        }
+    }
+
+    private void Preview_Click(object sender, RoutedEventArgs e)
+    {
+        if ((sender as Button)?.Tag is not ModCardViewModel card || card.PreviewPath is null)
+        {
+            ShowToast("该 Mod 根目录没有可用的 preview.png。", true);
+            return;
+        }
+
+        var image = PreviewImageLoader.Load(card.PreviewPath, 1800);
+        if (image is null)
+        {
+            ShowToast("preview.png 已损坏或无法读取。", true);
+            return;
+        }
+
+        LightboxImage.Source = image;
+        LightboxZoomSlider.Value = 1;
+        LightboxOverlay.Visibility = Visibility.Visible;
+        LightboxOverlay.Focus();
+    }
+
+    private void CloseLightbox_Click(object sender, RoutedEventArgs e) => CloseLightbox();
+
+    private void LightboxBackdrop_Click(object sender, MouseButtonEventArgs e)
+    {
+        if (ReferenceEquals(e.OriginalSource, LightboxOverlay))
+        {
+            CloseLightbox();
+        }
+    }
+
+    private void CloseLightbox()
+    {
+        LightboxOverlay.Visibility = Visibility.Collapsed;
+        LightboxImage.Source = null;
+    }
+
+    private void InspectMod_Click(object sender, RoutedEventArgs e)
+    {
+        if ((sender as Button)?.Tag is not ModCardViewModel card)
+        {
+            return;
+        }
+
+        try
+        {
+            var reportPath = Path.Combine(card.DirectoryPath, card.Manifest.ReportFile);
+            var report = File.Exists(reportPath) ? File.ReadAllText(reportPath) : "没有找到导入报告。";
+            var audit = _liveSwitch.Audit(card.Manifest);
+            var text = new StringBuilder(report)
+                .AppendLine().AppendLine().AppendLine("=== 实时门控审计 ===")
+                .AppendLine(audit.IsSafe ? "通过：所有可执行段均受禁用条件控制。" : string.Join(Environment.NewLine, audit.Issues))
+                .ToString();
+            new TextViewerWindow($"诊断 · {card.DisplayName}", text) { Owner = this }.ShowDialog();
+        }
+        catch (Exception ex)
+        {
+            ShowError("读取诊断失败", ex);
+        }
+    }
+
+    private void ShowHotkeys_Click(object sender, RoutedEventArgs e)
+    {
+        if ((sender as Button)?.Tag is not ModCardViewModel card)
+        {
+            return;
+        }
+
+        try
+        {
+            var hotkeys = ModHotkeyReader.Read(card.DirectoryPath);
+            new TextViewerWindow($"游戏内快捷键 · {card.DisplayName}", FormatHotkeys(card, hotkeys)) { Owner = this }.ShowDialog();
+        }
+        catch (Exception ex)
+        {
+            ShowError("读取快捷键失败", ex);
+        }
+    }
+
+    private void OpenModDirectory_Click(object sender, RoutedEventArgs e)
+    {
+        if ((sender as Button)?.Tag is ModCardViewModel card)
+        {
+            Process.Start(new ProcessStartInfo("explorer.exe", $"\"{card.DirectoryPath}\"") { UseShellExecute = true });
+        }
+    }
+
+    private void ChangeGroup_Click(object sender, RoutedEventArgs e)
+    {
+        if ((sender as Button)?.Tag is not ModCardViewModel card)
+        {
+            return;
+        }
+
+        var dialog = new GroupSelectionWindow(
+            card.Manifest.CharacterGroupOverrideKey,
+            _library.GetAvailableCharacterGroups()) { Owner = this };
+        if (dialog.ShowDialog() == true)
+        {
+            foreach (var created in dialog.CreatedGroups)
+            {
+                _library.RegisterCustomCharacterGroup(created);
+            }
+
+            _library.SetCharacterGroupOverride(card.Manifest.Id, dialog.SelectedGroupKey);
+            RefreshView();
+            ShowToast("角色分组已更新；同角色单选会在下次启用时执行。");
+        }
+    }
+
+    private void DeleteMod_Click(object sender, RoutedEventArgs e)
+    {
+        if ((sender as Button)?.Tag is not ModCardViewModel card)
+        {
+            return;
+        }
+
+        if (_stateCoordinator.IsGameRunning)
+        {
+            ShowToast("游戏运行时不能删除已加载资源，请先退出游戏。", true);
+            return;
+        }
+
+        if (MessageBox.Show(this, $"删除“{card.DisplayName}”的安装副本？原始下载文件不会删除。",
+                "确认删除", MessageBoxButton.YesNo, MessageBoxImage.Warning) != MessageBoxResult.Yes)
+        {
+            return;
+        }
+
+        try
+        {
+            _library.Delete(card.Manifest.Id);
+            _runtimeStates.Remove(card.Manifest.Id);
+            Log($"已删除安装副本：{card.DisplayName}");
+            RefreshView();
+            ShowToast("安装副本已删除，无法从管理器恢复；原始下载文件未改动。");
+        }
+        catch (Exception ex)
+        {
+            ShowError("删除失败", ex);
+        }
+    }
+
+    private string FormatHotkeys(ModCardViewModel card, IReadOnlyList<ModHotkey> hotkeys)
+    {
+        var builder = new StringBuilder();
+        builder.AppendLine(card.DisplayName);
+        builder.AppendLine("启用 / 禁用由管理器内部控制完成，无需按 F20、F21 等物理按键。");
+        builder.AppendLine("以下仅列出 Mod 作者配置的饰品或菜单快捷键：");
+        builder.AppendLine();
+        if (hotkeys.Count == 0)
+        {
+            builder.AppendLine("未发现作者配置的饰品或菜单快捷键。");
+        }
+        else
+        {
+            foreach (var group in hotkeys.GroupBy(hotkey => hotkey.File, StringComparer.OrdinalIgnoreCase))
+            {
+                builder.AppendLine($"[{group.Key}]");
+                foreach (var hotkey in group)
+                {
+                    builder.AppendLine($"- {hotkey.DisplayName}: {string.Join(" / ", hotkey.Keys)}");
+                }
+
+                builder.AppendLine();
+            }
+        }
+
+        return builder.ToString().TrimEnd();
+    }
+}
+
+public sealed class ModCardViewModel
+{
+    public ModManifest Manifest { get; }
+    public CharacterGroupInfo Character { get; }
+    public string DirectoryPath { get; }
+    public IReadOnlyList<string> MissingDependencies { get; }
+    public string DisplayName => Manifest.DisplayName;
+    public string CharacterDisplayName => Character.DisplayName;
+    public string? PreviewPath { get; }
+    public ImageSource? Thumbnail { get; }
+    public Visibility PreviewPlaceholderVisibility => Thumbnail is null ? Visibility.Visible : Visibility.Collapsed;
+    public string ToggleText => Manifest.Enabled ? "禁用 Mod" : "启用 Mod";
+    public string StatusText { get; }
+    public Brush StatusBrush { get; }
+    public Brush StatusForeground { get; }
+    public string CapabilityText { get; }
+    public Brush CapabilityBrush { get; }
+    public string DependencyText => MissingDependencies.Count == 0 ? string.Empty : "缺少依赖：" + string.Join("、", MissingDependencies);
+    public string RuntimeMessage { get; }
+
+    internal ModCardViewModel(
+        ModManifest manifest,
+        string directoryPath,
+        IReadOnlyList<string> missingDependencies,
+        RuntimeCardState? runtimeState,
+        ILiveModSwitchService liveSwitch,
+        CharacterGroupInfo character)
+    {
+        Manifest = manifest;
+        DirectoryPath = directoryPath;
+        MissingDependencies = missingDependencies;
+        Character = character;
+        PreviewPath = string.IsNullOrWhiteSpace(manifest.PreviewFile)
+            ? null
+            : Path.Combine(directoryPath, manifest.PreviewFile);
+        Thumbnail = PreviewPath is not null ? PreviewImageLoader.Load(PreviewPath, 480) : null;
+        RuntimeMessage = runtimeState?.Message ?? string.Empty;
+
+        var pending = runtimeState?.Application is ModStateApplication.Pending or ModStateApplication.Failed;
+        StatusText = missingDependencies.Count > 0
+            ? "缺依赖"
+            : pending ? "待应用" : manifest.Enabled ? "已启用" : "已禁用";
+        StatusBrush = new SolidColorBrush((Color)ColorConverter.ConvertFromString(
+            missingDependencies.Count > 0 || pending ? "#FFF2B45B" : manifest.Enabled ? "#FF58E6B2" : "#FF334255"));
+        StatusForeground = missingDependencies.Count > 0 || pending
+            ? new SolidColorBrush(Color.FromRgb(11, 15, 22))
+            : manifest.Enabled
+                ? new SolidColorBrush(Color.FromRgb(7, 19, 15))
+                : new SolidColorBrush(Color.FromRgb(167, 179, 194));
+        CapabilityText = manifest.LiveSwitchCapability switch
+        {
+            LiveSwitchCapability.Immediate => $"实时切换 · {liveSwitch.GetDisplayBinding(manifest, true)}",
+            LiveSwitchCapability.RequiresRestart => string.IsNullOrWhiteSpace(manifest.LiveSwitchBlockReason)
+                ? "静态顶点限制 · 启动预加载后可实时切换"
+                : manifest.LiveSwitchBlockReason,
+            LiveSwitchCapability.SlotUnavailable => "实时槽位已满 · 需要安全重载",
+            LiveSwitchCapability.Unsupported => "门控审计未通过 · 需要安全重载",
+            _ => "需要安全重载"
+        };
+        CapabilityBrush = manifest.LiveSwitchCapability == LiveSwitchCapability.Immediate
+            ? new SolidColorBrush(Color.FromRgb(88, 230, 178))
+            : new SolidColorBrush(Color.FromRgb(242, 180, 91));
+    }
+
+    public bool MatchesSearch(string search) => string.IsNullOrWhiteSpace(search)
+        || DisplayName.Contains(search, StringComparison.CurrentCultureIgnoreCase)
+        || Character.DisplayName.Contains(search, StringComparison.CurrentCultureIgnoreCase)
+        || Manifest.Dependencies.Any(item => item.Contains(search, StringComparison.CurrentCultureIgnoreCase));
+
+    public bool MatchesStatus(string status) => status switch
+    {
+        "Enabled" => Manifest.Enabled,
+        "Disabled" => !Manifest.Enabled,
+        "Dependency" => MissingDependencies.Count > 0,
+        "Pending" => Manifest.LiveSwitchCapability != LiveSwitchCapability.Immediate || StatusText == "待应用",
+        _ => true
+    };
+}
+
+public sealed record ModGroupViewModel(string DisplayName, IReadOnlyList<ModCardViewModel> Mods)
+{
+    public string CountText => $"{Mods.Count(card => card.Manifest.Enabled)} / {Mods.Count} 已启用";
+    public int SortOrder => Mods[0].Character.Kind switch
+    {
+        CharacterGroupKind.Character or CharacterGroupKind.Discovered or CharacterGroupKind.Custom => 0,
+        CharacterGroupKind.Framework => 1,
+        _ => 2
+    };
+}
+
+public sealed record CharacterFilterItem(string Key, string DisplayName, int Enabled, int Total, bool Selected)
+{
+    public string CountText => $"{Enabled}/{Total}";
+    public Brush Background => Selected
+        ? new SolidColorBrush(Color.FromRgb(28, 58, 55))
+        : Brushes.Transparent;
+    public Brush BorderBrush => Selected
+        ? new SolidColorBrush(Color.FromRgb(88, 230, 178))
+        : new SolidColorBrush(Color.FromRgb(51, 66, 85));
+}
+
+public static class PreviewImageLoader
+{
+    private const int MaximumSourceDimension = 65_535;
+    private const long MaximumSourcePixels = 200_000_000;
+    private const int MaximumCacheEntries = 64;
+    private static readonly object CacheSync = new();
+    private static readonly Dictionary<string, CacheEntry> Cache = new(StringComparer.OrdinalIgnoreCase);
+    private static long _accessSequence;
+
+    public static BitmapSource? Load(string path, int maximumDecodeDimension)
+    {
+        if (!File.Exists(path) || maximumDecodeDimension <= 0)
+        {
+            return null;
+        }
+
+        try
+        {
+            var fullPath = Path.GetFullPath(path);
+            var file = new FileInfo(fullPath);
+            var cacheKey = string.Join('\0', fullPath, file.Length, file.LastWriteTimeUtc.Ticks, maximumDecodeDimension);
+            lock (CacheSync)
+            {
+                if (Cache.TryGetValue(cacheKey, out var cached))
+                {
+                    cached.LastAccess = ++_accessSequence;
+                    return cached.Image;
+                }
+            }
+
+            int pixelWidth;
+            int pixelHeight;
+            using (var input = File.Open(fullPath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete))
+            {
+                var decoder = BitmapDecoder.Create(
+                    input,
+                    BitmapCreateOptions.DelayCreation | BitmapCreateOptions.IgnoreColorProfile,
+                    BitmapCacheOption.None);
+                var frame = decoder.Frames[0];
+                pixelWidth = frame.PixelWidth;
+                pixelHeight = frame.PixelHeight;
+            }
+
+            if (pixelWidth <= 0 || pixelHeight <= 0
+                || pixelWidth > MaximumSourceDimension || pixelHeight > MaximumSourceDimension
+                || checked((long)pixelWidth * pixelHeight) > MaximumSourcePixels)
+            {
+                return null;
+            }
+
+            var image = new BitmapImage();
+            image.BeginInit();
+            image.CacheOption = BitmapCacheOption.OnLoad;
+            image.CreateOptions = BitmapCreateOptions.IgnoreColorProfile;
+            if (Math.Max(pixelWidth, pixelHeight) > maximumDecodeDimension)
+            {
+                if (pixelWidth >= pixelHeight)
+                {
+                    image.DecodePixelWidth = maximumDecodeDimension;
+                }
+                else
+                {
+                    image.DecodePixelHeight = maximumDecodeDimension;
+                }
+            }
+
+            image.UriSource = new Uri(fullPath, UriKind.Absolute);
+            image.EndInit();
+            image.Freeze();
+            CacheImage(cacheKey, fullPath, image);
+            return image;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or NotSupportedException or FileFormatException)
+        {
+            return null;
+        }
+    }
+
+    private static void CacheImage(string key, string fullPath, BitmapSource image)
+    {
+        lock (CacheSync)
+        {
+            var prefix = fullPath + '\0';
+            foreach (var staleKey in Cache.Keys.Where(item => item.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)).ToList())
+            {
+                Cache.Remove(staleKey);
+            }
+
+            Cache[key] = new CacheEntry(image, ++_accessSequence);
+            while (Cache.Count > MaximumCacheEntries)
+            {
+                var oldest = Cache.MinBy(item => item.Value.LastAccess).Key;
+                Cache.Remove(oldest);
+            }
+        }
+    }
+
+    private sealed class CacheEntry(BitmapSource image, long lastAccess)
+    {
+        public BitmapSource Image { get; } = image;
+        public long LastAccess { get; set; } = lastAccess;
+    }
+}

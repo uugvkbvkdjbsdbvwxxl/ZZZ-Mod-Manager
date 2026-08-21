@@ -1,0 +1,28 @@
+**/bin/
+**/obj/
+.vs/
+*.user
+*.suo
+
+# Build and test output
+artifacts/
+**/TestResults/
+*.pdb
+
+# Local SDK/bootstrap files
+.dotnet-sdk/
+.dotnet-install.ps1
+
+# User data and runtime state
+Backups/
+Dependencies/
+Downloads/
+Logs/
+Mods/
+Runtime/
+Staging/
+UI/
+config.json
+library.json
+runtime-manifest.json
+*.log
