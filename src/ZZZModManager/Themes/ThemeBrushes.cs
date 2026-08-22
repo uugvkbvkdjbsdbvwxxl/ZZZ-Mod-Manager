@@ -7,11 +7,21 @@ namespace ZZZModManager.Themes;
 // values: a second source of truth is how "enabled green" and "accent" drifted
 // apart in the first place. Every brush is looked up from DarkTheme.xaml by
 // token key, so the dictionary stays the only place a color is defined.
+//
+// Consumers assign these brushes straight to element properties and one-way
+// bindings, so a theme switch cannot hand them a *different* instance later --
+// the old assignment would keep painting the previous palette. That is how the
+// light theme shipped with an invisible toast message and a dark "全部" chip:
+// ThemeBrushes handed out the dictionary's own instance, the dictionary entry was
+// then swapped (or was never the one AppearanceController repaints), and every
+// imperative consumer stayed pinned to the dark palette while DynamicResource
+// consumers re-resolved correctly. So ThemeBrushes now owns one brush per token
+// for the lifetime of the process and Refresh repaints those in place.
 public static class ThemeBrushes
 {
     private const string ThemeUri = "/ZZZModManager;component/Themes/DarkTheme.xaml";
     private static readonly object Sync = new();
-    private static readonly Dictionary<string, Brush> Resolved = new(StringComparer.Ordinal);
+    private static readonly Dictionary<string, SolidColorBrush> Resolved = new(StringComparer.Ordinal);
     private static ResourceDictionary? _standalone;
 
     public static Brush Canvas => Get("CanvasBrush");
@@ -42,18 +52,38 @@ public static class ThemeBrushes
                 return cached;
             }
 
-            // Deliberately NOT frozen: AppearanceController repaints the theme by
-            // mutating the Color of the very brush instances held in the resource
-            // dictionary, and a frozen copy would pin imperative consumers to the
-            // palette that happened to be active when they first asked for it.
-            var brush = Lookup(key) ?? Brushes.Transparent;
+            // Own the instance instead of handing out the dictionary's: a consumer
+            // that assigned it keeps the same object forever, so repainting it in
+            // Refresh is the only thing a theme switch has to do. Deliberately not
+            // frozen for exactly that reason.
+            var brush = new SolidColorBrush(ColorFor(key));
             Resolved[key] = brush;
             return brush;
         }
     }
 
-    // Called after the application dictionary is rebuilt so cached instances that
-    // no longer belong to it are dropped instead of silently going stale.
+    // Called right after the application dictionary has been repainted, so brushes
+    // already handed out follow the new palette instead of silently going stale.
+    public static void Refresh()
+    {
+        lock (Sync)
+        {
+            _standalone = null;
+            foreach (var (key, brush) in Resolved)
+            {
+                // Sealing a Style freezes any brush passed as a literal Setter value.
+                // Skipping a frozen brush costs one stale pixel; throwing here would
+                // take the whole theme switch down.
+                if (!brush.IsFrozen)
+                {
+                    brush.Color = ColorFor(key);
+                }
+            }
+        }
+    }
+
+    // Tests and headless hosts swap the application dictionary wholesale; dropping
+    // the cache lets the next Get resolve against whatever is live now.
     public static void Invalidate()
     {
         lock (Sync)
@@ -62,6 +92,9 @@ public static class ThemeBrushes
             _standalone = null;
         }
     }
+
+    private static Color ColorFor(string key) =>
+        Lookup(key) is SolidColorBrush brush ? brush.Color : Colors.Transparent;
 
     private static Brush? Lookup(string key)
     {

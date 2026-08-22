@@ -44,7 +44,7 @@ dotnet test .\ZZModManager.sln -c Release --no-build
 dotnet publish .\src\ZZZModManager\ZZZModManager.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -o .\artifacts\win-x64
 ```
 
-基线（.NET SDK 10.0.400）：构建 0 警告 0 错误，测试 78 个全部通过，发布产物为单文件 `ZZZModManager.exe`（约 141 MB，自包含）。改动后若数字低于此基线，属于回归。
+基线（.NET SDK 10.0.400）：构建 0 警告 0 错误，测试 103 个全部通过，发布产物为单文件 `ZZZModManager.exe`（约 141 MB，自包含）。改动后若数字低于此基线，属于回归。
 
 仓库没有独立的 lint / typecheck 脚本，`dotnet build` 与 `dotnet test` 即为质量门；由于警告即错误，构建通过等同于静态检查通过。
 

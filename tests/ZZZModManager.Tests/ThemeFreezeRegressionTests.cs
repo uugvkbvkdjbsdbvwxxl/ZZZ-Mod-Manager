@@ -94,6 +94,60 @@ public sealed class ThemeFreezeRegressionTests
         Assert.Equal(darkCanvas, frozen.Color);
     }
 
+    // The light theme shipped with an invisible toast message and a dark "全部" chip
+    // because ThemeBrushes handed out the resource dictionary's own brush instance:
+    // once Repaint replaced that entry with a thawed clone, every property that had
+    // already been assigned kept painting the dark palette. Owning the instance is
+    // what lets a theme switch reach assignments that were made long before it.
+    [Fact]
+    public void ThemeBrushesHandsOutItsOwnRepaintableInstance()
+    {
+        var theme = new ResourceDictionary
+        {
+            Source = new Uri("/ZZZModManager;component/Themes/DarkTheme.xaml", UriKind.Relative)
+        };
+
+        ThemeBrushes.Invalidate();
+        try
+        {
+            var text = Assert.IsType<SolidColorBrush>(ThemeBrushes.Text);
+
+            Assert.NotSame(theme["TextBrush"], text);
+            Assert.False(text.IsFrozen);
+            Assert.Equal(((SolidColorBrush)theme["TextBrush"]!).Color, text.Color);
+
+            // A consumer that assigned this brush must never be handed a different
+            // object later, before or after a palette switch.
+            Assert.Same(text, ThemeBrushes.Text);
+            ThemeBrushes.Refresh();
+            Assert.Same(text, ThemeBrushes.Text);
+        }
+        finally
+        {
+            ThemeBrushes.Invalidate();
+        }
+    }
+
+    [Fact]
+    public void RefreshSurvivesACachedBrushThatStyleSealingFroze()
+    {
+        ThemeBrushes.Invalidate();
+        try
+        {
+            var accent = (SolidColorBrush)ThemeBrushes.Accent;
+            var style = new Style(typeof(Control));
+            style.Setters.Add(new Setter(Control.BackgroundProperty, accent));
+            style.Seal();
+
+            Assert.True(accent.IsFrozen);
+            ThemeBrushes.Refresh();
+        }
+        finally
+        {
+            ThemeBrushes.Invalidate();
+        }
+    }
+
     private static string LoadFixtureText(string fileName)
     {
         var path = Path.Combine(AppContext.BaseDirectory, "Fixtures", fileName);

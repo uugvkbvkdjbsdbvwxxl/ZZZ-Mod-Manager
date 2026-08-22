@@ -326,13 +326,39 @@ public partial class MainWindow
         _appearanceHydrated = true;
 
         _appearance ??= new AppearanceController(Application.Current.Resources);
-        ApplyAppearance();
+        // Reset 外观 comes through here and can flip the palette back to dark, so the
+        // themed content has to be repainted; before Loaded the guard makes it a noop.
+        ApplyAppearance(repaintThemedContent: true);
     }
 
-    private void ApplyAppearance()
+    private void ApplyAppearance(bool repaintThemedContent = false)
     {
         _appearance?.Apply(_config);
+        // Apply only repaints the resource dictionary, which covers DynamicResource
+        // consumers. Brushes handed to code and to one-way bindings live in
+        // ThemeBrushes and have to be repainted too, otherwise the toast text and
+        // the character chips keep the palette that was live when they first asked.
+        ThemeBrushes.Refresh();
         ApplyBackgroundOpacity();
+        if (repaintThemedContent)
+        {
+            RefreshThemedContent();
+        }
+    }
+
+    // Values that were computed once from ThemeBrushes cannot observe a repaint, so
+    // the owning collections are rebuilt and the imperative status paint reruns.
+    // Only worth doing on a palette switch; opacity sliders fire per pixel dragged.
+    private void RefreshThemedContent()
+    {
+        if (!IsLoaded)
+        {
+            return;
+        }
+
+        RefreshView();
+        RefreshLogs();
+        UpdateRuntimeAndGameStatus();
     }
 
     // The image carries the user's value directly and the veil above it carries
@@ -356,7 +382,7 @@ public partial class MainWindow
         }
 
         _config.Theme = theme;
-        ApplyAppearance();
+        ApplyAppearance(repaintThemedContent: true);
         SaveConfig();
         ShowToast(theme == AppTheme.Light ? "已切换到亮色主题。" : "已切换到暗色主题。");
     }
