@@ -6,10 +6,12 @@
         WindowStartupLocation="CenterScreen" AllowDrop="True"
         UseLayoutRounding="True" SnapsToDevicePixels="True"
         KeyDown="Window_KeyDown">
-    <Grid Background="{StaticResource CanvasBrush}">
-        <Image x:Name="BackgroundImage" Stretch="UniformToFill" Opacity="0.18" Visibility="Collapsed"
+    <Grid Background="{DynamicResource CanvasBrush}">
+        <Image x:Name="BackgroundImage" Stretch="UniformToFill" Visibility="Collapsed"
                IsHitTestVisible="False" CacheMode="BitmapCache" RenderOptions.BitmapScalingMode="LowQuality" />
-        <Rectangle Fill="{StaticResource CanvasBrush}" Opacity="0.78" IsHitTestVisible="False" />
+        <!-- 遮罩由背景图透明度反向驱动：图越亮遮罩越薄，透明度调到最大时背景图完全可见。 -->
+        <Rectangle x:Name="BackgroundVeil" Fill="{DynamicResource CanvasBrush}" Opacity="0.55"
+                   IsHitTestVisible="False" />
 
         <Grid>
             <Grid.ColumnDefinitions>
@@ -21,8 +23,8 @@
                 <RowDefinition Height="32" />
             </Grid.RowDefinitions>
 
-            <Border Grid.RowSpan="2" Background="{StaticResource SidebarBrush}"
-                    BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,0,1,0">
+            <Border Grid.RowSpan="2" Background="{DynamicResource SidebarBrush}"
+                    BorderBrush="{DynamicResource BorderBrush}" BorderThickness="0,0,1,0">
                 <Grid Margin="12,16,12,10">
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto" />
@@ -31,10 +33,10 @@
                         <RowDefinition Height="Auto" />
                     </Grid.RowDefinitions>
                     <StackPanel Margin="10,0,8,20">
-                        <TextBlock Text="ZZZ" FontSize="28" FontWeight="Bold" Foreground="{StaticResource AccentBrush}" />
+                        <TextBlock Text="ZZZ" FontSize="28" FontWeight="Bold" Foreground="{DynamicResource AccentBrush}" />
                         <TextBlock Text="MOD MANAGER" FontSize="13" FontWeight="SemiBold" />
                         <TextBlock Text="绝区零 · 本地管理" Margin="0,4,0,0"
-                                   Foreground="{StaticResource MutedTextBrush}" FontSize="11" />
+                                   Foreground="{DynamicResource MutedTextBrush}" FontSize="11" />
                     </StackPanel>
                     <StackPanel Grid.Row="1">
                         <RadioButton x:Name="HomeNavButton" Style="{StaticResource NavButton}" GroupName="Navigation"
@@ -44,12 +46,13 @@
                         <RadioButton Style="{StaticResource NavButton}" GroupName="Navigation"
                                      Content="≡   日志" Tag="Logs" Checked="Navigation_Click" />
                     </StackPanel>
-                    <Border Grid.Row="3" Margin="0,8,0,0" Padding="11,10" CornerRadius="8"
-                            Background="{StaticResource SurfaceBrush}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1">
+                    <Border Grid.Row="3" Margin="0,8,0,0" Padding="11,10"
+                            CornerRadius="{StaticResource ControlRadius}"
+                            Background="{DynamicResource SurfaceBrush}" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1">
                         <StackPanel>
-                            <TextBlock Text="Alt + W" FontWeight="SemiBold" Foreground="{StaticResource AccentBrush}" />
+                            <TextBlock Text="Alt + W" FontWeight="SemiBold" Foreground="{DynamicResource AccentBrush}" />
                             <TextBlock Text="游戏内显示 / 隐藏" Margin="0,3,0,0" FontSize="11"
-                                       Foreground="{StaticResource MutedTextBrush}" />
+                                       Foreground="{DynamicResource MutedTextBrush}" />
                         </StackPanel>
                     </Border>
                 </Grid>
@@ -72,12 +75,12 @@
                             <StackPanel VerticalAlignment="Center">
                                 <TextBlock x:Name="HeroTitle" Text="准备启动绝区零" FontSize="24" FontWeight="SemiBold" />
                                 <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
-                                    <Ellipse x:Name="GameStatusDot" Width="8" Height="8" Fill="{StaticResource MutedTextBrush}"
+                                    <Ellipse x:Name="GameStatusDot" Width="8" Height="8" Fill="{DynamicResource MutedTextBrush}"
                                              Margin="0,0,7,0" VerticalAlignment="Center" />
-                                    <TextBlock x:Name="GameStatusText" Text="游戏未运行" Foreground="{StaticResource SecondaryTextBrush}" />
-                                    <TextBlock Text="  ·  " Foreground="{StaticResource MutedTextBrush}" />
+                                    <TextBlock x:Name="GameStatusText" Text="游戏未运行" Foreground="{DynamicResource SecondaryTextBrush}" />
+                                    <TextBlock Text="  ·  " Foreground="{DynamicResource MutedTextBrush}" />
                                     <TextBlock x:Name="RuntimeStatusText" Text="正在校验运行核心…"
-                                               Foreground="{StaticResource SecondaryTextBrush}" />
+                                               Foreground="{DynamicResource SecondaryTextBrush}" />
                                 </StackPanel>
                             </StackPanel>
                             <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
@@ -93,31 +96,44 @@
                             <Grid.RowDefinitions>
                                 <RowDefinition Height="Auto" />
                                 <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
                             </Grid.RowDefinitions>
-                            <ItemsControl x:Name="CharacterFiltersItemsControl">
-                                <ItemsControl.ItemsPanel>
-                                    <ItemsPanelTemplate>
-                                        <WrapPanel />
-                                    </ItemsPanelTemplate>
-                                </ItemsControl.ItemsPanel>
-                                <ItemsControl.ItemTemplate>
-                                    <DataTemplate>
-                                        <Button Tag="{Binding Key}" Click="CharacterFilter_Click"
-                                                Background="{Binding Background}" BorderBrush="{Binding BorderBrush}"
-                                                Padding="10,6" MinHeight="32">
-                                            <StackPanel Orientation="Horizontal">
-                                                <TextBlock Text="{Binding DisplayName}" />
-                                                <Border Margin="7,0,0,0" Padding="5,1" CornerRadius="6"
-                                                        Background="#FF0F1720">
-                                                    <TextBlock Text="{Binding CountText}" FontSize="10"
-                                                               Foreground="{StaticResource SecondaryTextBrush}" />
-                                                </Border>
-                                            </StackPanel>
-                                        </Button>
-                                    </DataTemplate>
-                                </ItemsControl.ItemTemplate>
-                            </ItemsControl>
-                            <Grid Grid.Row="1" Margin="3,8,3,0">
+                            <Border x:Name="CharacterFilterClip" ClipToBounds="True" MaxHeight="82"
+                                    GotKeyboardFocus="CharacterFilterClip_GotKeyboardFocus">
+                                <StackPanel>
+                                    <ItemsControl x:Name="CharacterFiltersItemsControl"
+                                                  SizeChanged="CharacterFilters_SizeChanged">
+                                        <ItemsControl.ItemsPanel>
+                                            <ItemsPanelTemplate>
+                                                <WrapPanel />
+                                            </ItemsPanelTemplate>
+                                        </ItemsControl.ItemsPanel>
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate>
+                                                <Button Tag="{Binding Key}" Click="CharacterFilter_Click"
+                                                        Background="{Binding Background}" BorderBrush="{Binding BorderBrush}"
+                                                        Foreground="{Binding Foreground}" FontWeight="{Binding LabelWeight}"
+                                                        Padding="10,6" MinHeight="34">
+                                                    <StackPanel Orientation="Horizontal">
+                                                        <TextBlock Text="{Binding DisplayName}" />
+                                                        <Border Margin="7,0,0,0" Padding="5,1"
+                                                                CornerRadius="{StaticResource PillRadius}"
+                                                                Background="{DynamicResource SurfaceSunkenBrush}">
+                                                            <TextBlock Text="{Binding CountText}" FontSize="10"
+                                                                       Foreground="{DynamicResource SecondaryTextBrush}" />
+                                                        </Border>
+                                                    </StackPanel>
+                                                </Button>
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
+                                </StackPanel>
+                            </Border>
+                            <Button Grid.Row="1" x:Name="CharacterFilterExpandButton" Visibility="Collapsed"
+                                    Style="{StaticResource GhostButton}" HorizontalAlignment="Left"
+                                    Margin="3,5,0,0" Content="展开全部角色 ▾"
+                                    Click="ToggleCharacterFilterExpand_Click" />
+                            <Grid Grid.Row="2" Margin="3,8,3,0">
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="*" />
                                     <ColumnDefinition Width="Auto" />
@@ -125,15 +141,15 @@
                                     <ColumnDefinition Width="Auto" />
                                 </Grid.ColumnDefinitions>
                                 <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                                    <TextBlock Text="搜索" Foreground="{StaticResource SecondaryTextBrush}"
+                                    <TextBlock Text="搜索" Foreground="{DynamicResource SecondaryTextBrush}"
                                                VerticalAlignment="Center" Margin="0,0,5,0" />
-                                    <TextBlock Text="Mod / 角色 / 依赖" Foreground="{StaticResource MutedTextBrush}"
+                                    <TextBlock Text="Mod / 角色 / 依赖" Foreground="{DynamicResource MutedTextBrush}"
                                                VerticalAlignment="Center" FontSize="11" Margin="0,0,4,0" />
                                     <TextBox x:Name="SearchBox" Width="250" ToolTip="搜索 Mod 名称、角色或依赖"
                                              TextChanged="SearchBox_TextChanged" />
                                 </StackPanel>
                                 <TextBlock Grid.Column="1" x:Name="FilterResultText" VerticalAlignment="Center"
-                                           Margin="10,0,4,0" Foreground="{StaticResource MutedTextBrush}" />
+                                           Margin="10,0,4,0" Foreground="{DynamicResource MutedTextBrush}" />
                                 <ComboBox x:Name="StatusFilterCombo" Grid.Column="2"
                                           SelectionChanged="StatusFilter_SelectionChanged" SelectedIndex="0">
                                     <ComboBoxItem Tag="All" Content="全部状态" />
@@ -148,32 +164,49 @@
                     </Border>
 
                     <Grid Grid.Row="2">
-                        <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"
-                                      PanningMode="VerticalOnly" CanContentScroll="False">
-                            <ItemsControl x:Name="ModGroupsItemsControl">
-                                <ItemsControl.ItemTemplate>
-                                    <DataTemplate>
-                                        <StackPanel Margin="0,2,0,12">
-                                            <DockPanel Margin="6,0,8,5" LastChildFill="True">
-                                                <TextBlock DockPanel.Dock="Right" Text="{Binding CountText}"
-                                                           Foreground="{StaticResource MutedTextBrush}" />
-                                                <TextBlock Text="{Binding DisplayName}" FontSize="16" FontWeight="SemiBold" />
-                                            </DockPanel>
-                                            <ItemsControl ItemsSource="{Binding Mods}">
-                                                <ItemsControl.ItemsPanel>
-                                                    <ItemsPanelTemplate><WrapPanel /></ItemsPanelTemplate>
-                                                </ItemsControl.ItemsPanel>
-                                                <ItemsControl.ItemTemplate>
-                                                    <DataTemplate>
-                                                        <Border Style="{StaticResource CardBorder}" Width="298" Height="360"
-                                                                BorderBrush="{Binding StatusBrush}">
+                        <ItemsControl x:Name="ModGroupsItemsControl"
+                                      VirtualizingPanel.IsVirtualizing="True"
+                                      VirtualizingPanel.VirtualizationMode="Recycling"
+                                      VirtualizingPanel.ScrollUnit="Pixel"
+                                      VirtualizingPanel.CacheLength="1,1"
+                                      VirtualizingPanel.CacheLengthUnit="Page">
+                            <!-- 虚拟化要求承载 IScrollInfo 的 ScrollViewer 位于 ItemsControl 模板内部，
+                                 放在外面会让面板拿到无限高度，从而一次性实例化全部分组。 -->
+                            <ItemsControl.Template>
+                                <ControlTemplate TargetType="ItemsControl">
+                                    <ScrollViewer x:Name="ModGridScrollViewer" Focusable="False"
+                                                  VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"
+                                                  PanningMode="VerticalOnly" CanContentScroll="True">
+                                        <ItemsPresenter />
+                                    </ScrollViewer>
+                                </ControlTemplate>
+                            </ItemsControl.Template>
+                            <ItemsControl.ItemsPanel>
+                                <ItemsPanelTemplate><VirtualizingStackPanel /></ItemsPanelTemplate>
+                            </ItemsControl.ItemsPanel>
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <StackPanel Margin="0,2,0,12">
+                                        <DockPanel Margin="6,0,8,5" LastChildFill="True">
+                                            <TextBlock DockPanel.Dock="Right" Text="{Binding CountText}"
+                                                       Foreground="{DynamicResource MutedTextBrush}" />
+                                            <TextBlock Text="{Binding DisplayName}" FontSize="16" FontWeight="SemiBold" />
+                                        </DockPanel>
+                                        <ItemsControl ItemsSource="{Binding Mods}">
+                                            <ItemsControl.ItemsPanel>
+                                                <ItemsPanelTemplate><WrapPanel /></ItemsPanelTemplate>
+                                            </ItemsControl.ItemsPanel>
+                                            <ItemsControl.ItemTemplate>
+                                                <DataTemplate>
+                                                    <Border Style="{StaticResource CardBorder}" Width="298" Height="360"
+                                                            BorderBrush="{Binding StatusBrush}">
                                                             <Grid>
                                                                 <Grid.RowDefinitions>
                                                                     <RowDefinition Height="126" />
                                                                     <RowDefinition Height="*" />
                                                                 </Grid.RowDefinitions>
                                                                 <Button Padding="0" Margin="0" BorderThickness="0"
-                                                                        BorderBrush="Transparent" Background="{StaticResource SurfaceBrush}"
+                                                                        BorderBrush="Transparent" Background="{DynamicResource SurfaceBrush}"
                                                                         Tag="{Binding}" Click="Preview_Click">
                                                                     <Grid ClipToBounds="True">
                                                                         <Image Source="{Binding Thumbnail}" Stretch="UniformToFill"
@@ -181,12 +214,12 @@
                                                                         <StackPanel Visibility="{Binding PreviewPlaceholderVisibility}"
                                                                                     HorizontalAlignment="Center" VerticalAlignment="Center">
                                                                             <TextBlock Text="◌" FontSize="32" HorizontalAlignment="Center"
-                                                                                       Foreground="{StaticResource MutedTextBrush}" />
+                                                                                       Foreground="{DynamicResource MutedTextBrush}" />
                                                                             <TextBlock Text="无 preview.png" Margin="0,4,0,0"
-                                                                                       Foreground="{StaticResource SecondaryTextBrush}" />
+                                                                                       Foreground="{DynamicResource SecondaryTextBrush}" />
                                                                         </StackPanel>
                                                                         <Border HorizontalAlignment="Right" VerticalAlignment="Top" Margin="8" Padding="8,4"
-                                                                                CornerRadius="8" Background="{Binding StatusBrush}">
+                                                                                CornerRadius="{StaticResource PillRadius}" Background="{Binding StatusBrush}">
                                                                             <TextBlock Text="{Binding StatusText}" FontSize="11"
                                                                                        FontWeight="SemiBold" Foreground="{Binding StatusForeground}" />
                                                                         </Border>
@@ -203,36 +236,48 @@
                                                                     <TextBlock Text="{Binding DisplayName}" FontSize="15" FontWeight="SemiBold"
                                                                                TextTrimming="CharacterEllipsis" />
                                                                     <TextBlock Grid.Row="1" Text="{Binding CharacterDisplayName}" Margin="0,3,0,0"
-                                                                               Foreground="{StaticResource AccentBrush}" TextTrimming="CharacterEllipsis" />
+                                                                               Foreground="{DynamicResource AccentBrush}" TextTrimming="CharacterEllipsis" />
                                                                     <StackPanel Grid.Row="2" Margin="0,7,0,0">
                                                                         <TextBlock Text="{Binding CapabilityText}" FontSize="11"
                                                                                    Foreground="{Binding CapabilityBrush}" TextWrapping="Wrap" />
                                                                         <TextBlock Text="{Binding DependencyText}" Margin="0,3,0,0" FontSize="11"
-                                                                                   Foreground="{StaticResource WarningBrush}" TextWrapping="Wrap" />
+                                                                                   Foreground="{DynamicResource WarningBrush}" TextWrapping="Wrap" />
                                                                         <TextBlock Text="{Binding RuntimeMessage}" Margin="0,3,0,0" FontSize="11"
-                                                                                   Foreground="{StaticResource InfoBrush}" TextWrapping="Wrap" />
+                                                                                   Foreground="{DynamicResource InfoBrush}" TextWrapping="Wrap" />
                                                                     </StackPanel>
-                                                                    <Button Grid.Row="3" Tag="{Binding}" Click="ToggleMod_Click"
-                                                                            Style="{StaticResource PrimaryButton}" MinHeight="35"
+                                                                    <Button Grid.Row="3" x:Name="CardToggleButton"
+                                                                            Tag="{Binding}" Click="ToggleMod_Click"
+                                                                            Style="{StaticResource PrimaryButton}" MinHeight="36"
+                                                                            Margin="0,7,0,0"
+                                                                            ToolTip="方向键在卡片间移动，Enter 启用或禁用"
                                                                             Content="{Binding ToggleText}" HorizontalContentAlignment="Center" />
-                                                                    <UniformGrid Grid.Row="4" Columns="5" Margin="-2,2,-2,-2">
-                                                                        <Button Style="{StaticResource UtilityButton}" Content="快捷键" Tag="{Binding}" Click="ShowHotkeys_Click" />
-                                                                        <Button Style="{StaticResource UtilityButton}" Content="诊断" Tag="{Binding}" Click="InspectMod_Click" />
-                                                                        <Button Style="{StaticResource UtilityButton}" Content="目录" Tag="{Binding}" Click="OpenModDirectory_Click" />
-                                                                        <Button Style="{StaticResource UtilityButton}" Content="分组" Tag="{Binding}" Click="ChangeGroup_Click" />
-                                                                        <Button Style="{StaticResource DangerButton}" Content="删除" Tag="{Binding}" Click="DeleteMod_Click" />
-                                                                    </UniformGrid>
+                                                                    <Button Grid.Row="4" x:Name="CardOverflowButton"
+                                                                            Style="{StaticResource GhostButton}" Margin="0,6,0,0"
+                                                                            Content="更多操作 ⋯" Tag="{Binding}"
+                                                                            ToolTip="快捷键 / 诊断 / 目录 / 分组 / 删除"
+                                                                            Click="CardOverflow_Click">
+                                                                        <Button.ContextMenu>
+                                                                            <ContextMenu Placement="Bottom">
+                                                                                <MenuItem Header="游戏内快捷键" Tag="{Binding}" Click="ShowHotkeys_Click" />
+                                                                                <MenuItem Header="导入诊断报告" Tag="{Binding}" Click="InspectMod_Click" />
+                                                                                <MenuItem Header="打开安装目录" Tag="{Binding}" Click="OpenModDirectory_Click" />
+                                                                                <MenuItem Header="更改角色分组" Tag="{Binding}" Click="ChangeGroup_Click" />
+                                                                                <Separator />
+                                                                                <MenuItem Style="{StaticResource DangerMenuItem}" Header="删除安装副本"
+                                                                                          Tag="{Binding}" Click="DeleteMod_Click" />
+                                                                            </ContextMenu>
+                                                                        </Button.ContextMenu>
+                                                                    </Button>
                                                                 </Grid>
                                                             </Grid>
-                                                        </Border>
-                                                    </DataTemplate>
-                                                </ItemsControl.ItemTemplate>
-                                            </ItemsControl>
-                                        </StackPanel>
-                                    </DataTemplate>
-                                </ItemsControl.ItemTemplate>
-                            </ItemsControl>
-                        </ScrollViewer>
+                                                    </Border>
+                                                </DataTemplate>
+                                            </ItemsControl.ItemTemplate>
+                                        </ItemsControl>
+                                    </StackPanel>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
                         <Border x:Name="EmptyStateBorder" Visibility="Collapsed" Width="390"
                                 HorizontalAlignment="Center" VerticalAlignment="Center"
                                 Style="{StaticResource PanelBorder}" Padding="22,18">
@@ -240,7 +285,7 @@
                                 <TextBlock Text="没有匹配的 Mod" FontSize="17" FontWeight="SemiBold"
                                            HorizontalAlignment="Center" />
                                 <TextBlock x:Name="EmptyStateText" Text="尝试清除搜索、角色或状态筛选。"
-                                           Margin="0,6,0,10" Foreground="{StaticResource SecondaryTextBrush}"
+                                           Margin="0,6,0,10" Foreground="{DynamicResource SecondaryTextBrush}"
                                            TextWrapping="Wrap" TextAlignment="Center" />
                                 <Button Content="清除筛选" Click="ClearFilters_Click" HorizontalAlignment="Center" />
                             </StackPanel>
@@ -254,15 +299,15 @@
                         <StackPanel Margin="3,0,0,12">
                             <TextBlock Text="设置" FontSize="26" FontWeight="SemiBold" />
                             <TextBlock Text="运行核心、导入、外观与切换行为" Margin="0,4,0,0"
-                                       Foreground="{StaticResource SecondaryTextBrush}" />
+                                       Foreground="{DynamicResource SecondaryTextBrush}" />
                         </StackPanel>
                         <Border Style="{StaticResource PanelBorder}" Margin="0,0,0,8">
                             <StackPanel>
                                 <TextBlock Text="游戏与运行核心" FontSize="16" FontWeight="SemiBold" />
                                 <TextBlock Text="告诉管理器游戏位置，并确认 XXMI / ZZMI 运行核心可用。"
-                                           Margin="3,4,0,8" Foreground="{StaticResource SecondaryTextBrush}" />
+                                           Margin="3,4,0,8" Foreground="{DynamicResource SecondaryTextBrush}" />
                                 <TextBlock Text="ZenlessZoneZero.exe" Margin="3,0,0,2"
-                                           Foreground="{StaticResource MutedTextBrush}" FontSize="11" />
+                                           Foreground="{DynamicResource MutedTextBrush}" FontSize="11" />
                                 <Grid>
                                     <Grid.ColumnDefinitions>
                                         <ColumnDefinition Width="*" />
@@ -278,14 +323,14 @@
                                 </WrapPanel>
                             </StackPanel>
                         </Border>
-                        <Border x:Name="ImportDropZone" Style="{StaticResource PanelBorder}" Margin="0,0,0,8" MinHeight="112"
+                        <Border x:Name="ImportDropZone" Style="{StaticResource PanelBorder}" Margin="0,0,0,8" MinHeight="88"
                                 AllowDrop="True" Drop="ImportDropZone_Drop" DragOver="ImportDropZone_DragOver">
                             <Grid>
                                 <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center">
                                     <TextBlock Text="把 GameBanana 的 ZIP / 7Z / RAR 或文件夹拖到这里"
                                                FontSize="16" FontWeight="SemiBold" HorizontalAlignment="Center" />
                                     <TextBlock Text="自动识别 Mod 根目录，扫描后安装副本。"
-                                               Margin="0,4,0,7" Foreground="{StaticResource SecondaryTextBrush}"
+                                               Margin="0,4,0,7" Foreground="{DynamicResource SecondaryTextBrush}"
                                                HorizontalAlignment="Center" />
                                     <WrapPanel HorizontalAlignment="Center">
                                         <Button Content="导入压缩包" Click="ImportMods_Click" />
@@ -298,13 +343,41 @@
                         <Border Style="{StaticResource PanelBorder}" Margin="0,0,0,8">
                             <StackPanel>
                                 <TextBlock Text="外观" FontSize="16" FontWeight="SemiBold" />
-                                <TextBlock Text="背景图只作弱化氛围，不影响状态与文字识别。"
-                                           Margin="3,4,0,7" Foreground="{StaticResource SecondaryTextBrush}" />
-                                <TextBlock x:Name="BackgroundPathText" Margin="3,0,0,5"
-                                           Foreground="{StaticResource MutedTextBrush}" TextWrapping="Wrap" />
+                                <TextBlock Text="主题决定配色，透明度只影响装饰层，不会削弱状态与文字识别。"
+                                           Margin="3,4,0,7" Foreground="{DynamicResource SecondaryTextBrush}"
+                                           TextWrapping="Wrap" />
+                                <TextBlock Text="界面主题" Margin="3,0,0,4"
+                                           Foreground="{DynamicResource MutedTextBrush}" />
+                                <ComboBox x:Name="ThemeComboBox" Width="245" HorizontalAlignment="Left"
+                                          SelectedValuePath="Tag" SelectionChanged="Theme_Changed">
+                                    <ComboBoxItem Tag="Dark" Content="暗色" />
+                                    <ComboBoxItem Tag="Light" Content="亮色" />
+                                </ComboBox>
+                                <TextBlock Text="菜单栏透明度" Margin="3,10,0,4"
+                                           Foreground="{DynamicResource MutedTextBrush}" />
+                                <Slider x:Name="SidebarOpacitySlider" Width="245" HorizontalAlignment="Left"
+                                        Minimum="0.45" Maximum="1" TickFrequency="0.05"
+                                        IsSnapToTickEnabled="True"
+                                        ValueChanged="ChromeOpacity_Changed" />
+                                <TextBlock Text="界面面板透明度" Margin="3,10,0,4"
+                                           Foreground="{DynamicResource MutedTextBrush}" />
+                                <Slider x:Name="PanelOpacitySlider" Width="245" HorizontalAlignment="Left"
+                                        Minimum="0.45" Maximum="1" TickFrequency="0.05"
+                                        IsSnapToTickEnabled="True"
+                                        ValueChanged="ChromeOpacity_Changed" />
+                                <TextBlock Text="背景图强度" Margin="3,10,0,4"
+                                           Foreground="{DynamicResource MutedTextBrush}" />
+                                <Slider x:Name="BackgroundOpacitySlider" Width="245" HorizontalAlignment="Left"
+                                        Minimum="0" Maximum="1" TickFrequency="0.05"
+                                        IsSnapToTickEnabled="True"
+                                        ValueChanged="BackgroundOpacity_Changed" />
+                                <TextBlock x:Name="BackgroundPathText" Margin="3,10,0,5"
+                                           Foreground="{DynamicResource MutedTextBrush}" TextWrapping="Wrap" />
                                 <WrapPanel>
                                     <Button Content="设置背景图" Click="SetBackground_Click" />
                                     <Button Content="清除背景图" Click="ClearBackground_Click" />
+                                    <Button Content="恢复默认外观" Style="{StaticResource UtilityButton}"
+                                            Click="ResetAppearance_Click" />
                                 </WrapPanel>
                             </StackPanel>
                         </Border>
@@ -312,7 +385,7 @@
                             <StackPanel>
                                 <TextBlock Text="切换行为" FontSize="16" FontWeight="SemiBold" />
                                 <TextBlock Text="管理器会把可安全控制的变化发送给运行中的游戏；渲染结果需在游戏内确认。"
-                                           Margin="3,4,0,4" Foreground="{StaticResource SecondaryTextBrush}"
+                                           Margin="3,4,0,4" Foreground="{DynamicResource SecondaryTextBrush}"
                                            TextWrapping="Wrap" />
                                 <CheckBox x:Name="AutoHideCheckBox"
                                           Content="实时切换命令发送且状态保存后隐藏管理器并切回游戏"
@@ -320,7 +393,7 @@
                                 <CheckBox x:Name="ReloadRequiredCheckBox"
                                           Content="首次同步、导入或目录变化时自动执行一次安全重载"
                                           Click="BehaviorOption_Changed" />
-                                <TextBlock Text="窗口关闭按钮" Margin="3,8,0,4" Foreground="{StaticResource MutedTextBrush}" />
+                                <TextBlock Text="窗口关闭按钮" Margin="3,8,0,4" Foreground="{DynamicResource MutedTextBrush}" />
                                 <WrapPanel>
                                     <ComboBox x:Name="CloseBehaviorComboBox" Width="245"
                                               SelectedValuePath="Tag" SelectionChanged="CloseBehavior_Changed">
@@ -329,9 +402,28 @@
                                     </ComboBox>
                                     <Button Content="退出管理器" Click="ExitManager_Click" />
                                 </WrapPanel>
-                                <TextBlock Text="普通 F10 只用于隐藏 ZZMI 首次帮助提示；管理器安全重载使用独立内部通道。管理器启动游戏前会预载所有静态 Mod，同 hash 由 XXMI 取最大字节容量处理。普通切换发送绝对状态命令；同角色或同 hash 切换可能自动安全刷新但无需重启。只有游戏运行后才新增尚未预载的静态 Mod，或规则升级尚未完成启动前准备时，才需关闭并由管理器重新启动一次。管理器无法读取游戏渲染结果，请在游戏内确认画面。"
-                                           TextWrapping="Wrap" Margin="4,8,0,0"
-                                           Foreground="{StaticResource MutedTextBrush}" />
+                                <StackPanel x:Name="SwitchBehaviorNotes" MaxWidth="620"
+                                            HorizontalAlignment="Left" Margin="4,10,0,0">
+                                    <TextBlock Text="立即生效" FontWeight="SemiBold"
+                                               Foreground="{DynamicResource SuccessBrush}" />
+                                    <TextBlock Text="· 普通切换发送绝对状态命令；同角色或同 hash 切换会自动安全刷新。"
+                                               Margin="0,4,0,0" TextWrapping="Wrap"
+                                               Foreground="{DynamicResource SecondaryTextBrush}" />
+                                    <TextBlock Text="· 启动游戏前已预载全部静态 Mod，同 hash 由 XXMI 按最大字节容量处理。"
+                                               Margin="0,3,0,0" TextWrapping="Wrap"
+                                               Foreground="{DynamicResource SecondaryTextBrush}" />
+                                    <TextBlock Text="需要重启游戏" Margin="0,11,0,0" FontWeight="SemiBold"
+                                               Foreground="{DynamicResource WarningBrush}" />
+                                    <TextBlock Text="· 游戏运行之后才新增、因此尚未被预载的静态 Mod。"
+                                               Margin="0,4,0,0" TextWrapping="Wrap"
+                                               Foreground="{DynamicResource SecondaryTextBrush}" />
+                                    <TextBlock Text="· 规则升级尚未完成启动前准备，需由管理器重新启动一次。"
+                                               Margin="0,3,0,0" TextWrapping="Wrap"
+                                               Foreground="{DynamicResource SecondaryTextBrush}" />
+                                    <TextBlock Text="F10 只用于隐藏 ZZMI 首次帮助提示，安全重载走独立内部通道；管理器读不到游戏渲染结果，最终画面请在游戏内确认。"
+                                               Margin="0,11,0,0" TextWrapping="Wrap"
+                                               Foreground="{DynamicResource MutedTextBrush}" />
+                                </StackPanel>
                             </StackPanel>
                         </Border>
                     </StackPanel>
@@ -346,7 +438,7 @@
                     <StackPanel Margin="3,0,0,10">
                         <TextBlock Text="日志" FontSize="26" FontWeight="SemiBold" />
                         <TextBlock x:Name="LogRetentionText" Margin="0,4,0,0"
-                                   Foreground="{StaticResource SecondaryTextBrush}" />
+                                   Foreground="{DynamicResource SecondaryTextBrush}" />
                     </StackPanel>
                     <Border Grid.Row="1" Style="{StaticResource PanelBorder}" Padding="7" Margin="0,0,0,8">
                         <Grid>
@@ -358,7 +450,7 @@
                                 <ColumnDefinition Width="Auto" />
                             </Grid.ColumnDefinitions>
                             <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                                <TextBlock Text="搜索" Foreground="{StaticResource SecondaryTextBrush}"
+                                <TextBlock Text="搜索" Foreground="{DynamicResource SecondaryTextBrush}"
                                            VerticalAlignment="Center" Margin="3,0,5,0" />
                                 <TextBox x:Name="LogSearchBox" Width="260" ToolTip="搜索日志内容或级别"
                                          TextChanged="LogSearchBox_TextChanged" />
@@ -380,7 +472,7 @@
                                             <ColumnDefinition Width="58" />
                                             <ColumnDefinition Width="*" />
                                         </Grid.ColumnDefinitions>
-                                        <TextBlock Text="{Binding TimeText}" Foreground="{StaticResource MutedTextBrush}"
+                                        <TextBlock Text="{Binding TimeText}" Foreground="{DynamicResource MutedTextBrush}"
                                                    FontSize="11" />
                                         <TextBlock Grid.Column="1" Text="{Binding LevelText}" Foreground="{Binding LevelBrush}"
                                                    FontWeight="SemiBold" FontSize="11" />
@@ -395,17 +487,17 @@
 
             <DockPanel Grid.Column="1" Grid.Row="1" Margin="17,0,17,0">
                 <TextBlock x:Name="StatusText" VerticalAlignment="Center"
-                           Foreground="{StaticResource MutedTextBrush}" FontSize="11" />
+                           Foreground="{DynamicResource MutedTextBrush}" FontSize="11" />
                 <TextBlock x:Name="BusyText" DockPanel.Dock="Right" VerticalAlignment="Center"
-                           Foreground="{StaticResource AccentBrush}" FontSize="11" />
+                           Foreground="{DynamicResource AccentBrush}" FontSize="11" />
             </DockPanel>
+            <Border x:Name="ToastBorder" Grid.Column="1" Grid.Row="0" Visibility="Collapsed"
+                    HorizontalAlignment="Center" VerticalAlignment="Top"
+                    Margin="0,18,0,0" Padding="15,10" CornerRadius="{StaticResource ControlRadius}"
+                    Background="{DynamicResource SurfaceRaisedBrush}" BorderBrush="{DynamicResource AccentBrush}" BorderThickness="1">
+                <TextBlock x:Name="ToastText" MaxWidth="720" TextWrapping="Wrap" />
+            </Border>
         </Grid>
-
-        <Border x:Name="ToastBorder" Visibility="Collapsed" HorizontalAlignment="Center" VerticalAlignment="Top"
-                Margin="198,18,18,0" Padding="15,10" CornerRadius="9"
-                Background="{StaticResource SurfaceRaisedBrush}" BorderBrush="{StaticResource AccentBrush}" BorderThickness="1">
-            <TextBlock x:Name="ToastText" MaxWidth="720" TextWrapping="Wrap" />
-        </Border>
 
         <Border x:Name="LightboxOverlay" Visibility="Collapsed" Background="#E9000000"
                 MouseLeftButtonDown="LightboxBackdrop_Click">

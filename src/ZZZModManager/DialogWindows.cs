@@ -329,13 +329,16 @@ public sealed class GroupSelectionWindow : Window
         // The status filter on the main page is light. This dialog owns both
         // the closed control and popup item styles so every option stays
         // readable on the dark surface.
+        // Setter values must stay DynamicResource references: sealing a style
+        // freezes any Freezable handed to it directly, and these brushes are the
+        // live theme instances that AppearanceController repaints in place.
         var baseComboStyle = TryFindResource(typeof(ComboBox)) as Style;
         var comboStyle = baseComboStyle is null
             ? new Style(typeof(ComboBox))
             : new Style(typeof(ComboBox), baseComboStyle);
-        comboStyle.Setters.Add(new Setter(Control.ForegroundProperty, FindResource("DialogTextBrush")));
-        comboStyle.Setters.Add(new Setter(Control.BackgroundProperty, FindResource("DialogRaisedBrush")));
-        comboStyle.Setters.Add(new Setter(Control.BorderBrushProperty, FindResource("DialogBorderBrush")));
+        comboStyle.Setters.Add(new Setter(Control.ForegroundProperty, new DynamicResourceExtension("DialogTextBrush")));
+        comboStyle.Setters.Add(new Setter(Control.BackgroundProperty, new DynamicResourceExtension("DialogRaisedBrush")));
+        comboStyle.Setters.Add(new Setter(Control.BorderBrushProperty, new DynamicResourceExtension("DialogBorderBrush")));
         comboStyle.Setters.Add(new Setter(Control.PaddingProperty, new Thickness(10, 7, 10, 7)));
         comboStyle.Setters.Add(new Setter(Control.MinHeightProperty, 38.0));
         combo.Style = comboStyle;
@@ -344,13 +347,13 @@ public sealed class GroupSelectionWindow : Window
         var itemStyle = baseItemStyle is null
             ? new Style(typeof(ComboBoxItem))
             : new Style(typeof(ComboBoxItem), baseItemStyle);
-        itemStyle.Setters.Add(new Setter(Control.ForegroundProperty, FindResource("DialogTextBrush")));
-        itemStyle.Setters.Add(new Setter(Control.BackgroundProperty, FindResource("DialogSurfaceBrush")));
-        itemStyle.Setters.Add(new Setter(Control.BorderBrushProperty, FindResource("DialogBorderBrush")));
+        itemStyle.Setters.Add(new Setter(Control.ForegroundProperty, new DynamicResourceExtension("DialogTextBrush")));
+        itemStyle.Setters.Add(new Setter(Control.BackgroundProperty, new DynamicResourceExtension("DialogSurfaceBrush")));
+        itemStyle.Setters.Add(new Setter(Control.BorderBrushProperty, new DynamicResourceExtension("DialogBorderBrush")));
         itemStyle.Setters.Add(new Setter(Control.PaddingProperty, new Thickness(10, 8, 10, 8)));
         itemStyle.Setters.Add(new Setter(Control.HorizontalContentAlignmentProperty, HorizontalAlignment.Stretch));
         var hoverTrigger = new Trigger { Property = UIElement.IsMouseOverProperty, Value = true };
-        hoverTrigger.Setters.Add(new Setter(Control.BackgroundProperty, FindResource("AccentStrongBrush")));
+        hoverTrigger.Setters.Add(new Setter(Control.BackgroundProperty, new DynamicResourceExtension("AccentStrongBrush")));
         hoverTrigger.Setters.Add(new Setter(
             Control.ForegroundProperty,
             new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(7, 23, 17))));
@@ -358,7 +361,7 @@ public sealed class GroupSelectionWindow : Window
         combo.ItemContainerStyle = itemStyle;
 
         var comboTextStyle = new Style(typeof(TextBlock));
-        comboTextStyle.Setters.Add(new Setter(TextBlock.ForegroundProperty, FindResource("DialogTextBrush")));
+        comboTextStyle.Setters.Add(new Setter(TextBlock.ForegroundProperty, new DynamicResourceExtension("DialogTextBrush")));
         comboTextStyle.Setters.Add(new Setter(TextBlock.FontSizeProperty, 13.0));
         combo.Resources.Add(typeof(TextBlock), comboTextStyle);
         combo.Resources[SystemColors.WindowBrushKey] = FindResource("DialogSurfaceBrush");

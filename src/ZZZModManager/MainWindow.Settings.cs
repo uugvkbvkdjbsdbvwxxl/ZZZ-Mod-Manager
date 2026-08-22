@@ -8,6 +8,7 @@ using Microsoft.Win32;
 using ZZZModManager.Infrastructure;
 using ZZZModManager.Models;
 using ZZZModManager.Services;
+using ZZZModManager.Themes;
 
 namespace ZZZModManager;
 
@@ -312,6 +313,116 @@ public partial class MainWindow
         BackgroundPathText.Text = image is null ? "背景图无法读取" : $"当前：{Path.GetFileName(path)}";
     }
 
+    // Hydration writes to the controls, which fires their change handlers before
+    // the config has anything new to store; the flag keeps those echoes from
+    // rewriting the file on every start.
+    private void HydrateAppearance()
+    {
+        _appearanceHydrated = false;
+        ThemeComboBox.SelectedValue = _config.Theme.ToString();
+        SidebarOpacitySlider.Value = AppearancePolicy.ClampChromeOpacity(_config.SidebarOpacity);
+        PanelOpacitySlider.Value = AppearancePolicy.ClampChromeOpacity(_config.PanelOpacity);
+        BackgroundOpacitySlider.Value = AppearancePolicy.ClampBackgroundOpacity(_config.BackgroundOpacity);
+        _appearanceHydrated = true;
+
+        _appearance ??= new AppearanceController(Application.Current.Resources);
+        // Reset 外观 comes through here and can flip the palette back to dark, so the
+        // themed content has to be repainted; before Loaded the guard makes it a noop.
+        ApplyAppearance(repaintThemedContent: true);
+    }
+
+    private void ApplyAppearance(bool repaintThemedContent = false)
+    {
+        _appearance?.Apply(_config);
+        // Apply only repaints the resource dictionary, which covers DynamicResource
+        // consumers. Brushes handed to code and to one-way bindings live in
+        // ThemeBrushes and have to be repainted too, otherwise the toast text and
+        // the character chips keep the palette that was live when they first asked.
+        ThemeBrushes.Refresh();
+        ApplyBackgroundOpacity();
+        if (repaintThemedContent)
+        {
+            RefreshThemedContent();
+        }
+    }
+
+    // Values that were computed once from ThemeBrushes cannot observe a repaint, so
+    // the owning collections are rebuilt and the imperative status paint reruns.
+    // Only worth doing on a palette switch; opacity sliders fire per pixel dragged.
+    private void RefreshThemedContent()
+    {
+        if (!IsLoaded)
+        {
+            return;
+        }
+
+        RefreshView();
+        RefreshLogs();
+        UpdateRuntimeAndGameStatus();
+    }
+
+    // The image carries the user's value directly and the veil above it carries
+    // the inverse, so "背景图强度 = 1" really means an unobstructed picture.
+    private void ApplyBackgroundOpacity()
+    {
+        var opacity = AppearancePolicy.ClampBackgroundOpacity(_config.BackgroundOpacity);
+        BackgroundImage.Opacity = opacity;
+        BackgroundVeil.Opacity = AppearancePolicy.VeilOpacityFor(opacity);
+    }
+
+    private void Theme_Changed(object sender, SelectionChangedEventArgs e)
+    {
+        if (_config is null
+            || !_appearanceHydrated
+            || ThemeComboBox?.SelectedValue is not string value
+            || !Enum.TryParse<AppTheme>(value, ignoreCase: true, out var theme)
+            || _config.Theme == theme)
+        {
+            return;
+        }
+
+        _config.Theme = theme;
+        ApplyAppearance(repaintThemedContent: true);
+        SaveConfig();
+        ShowToast(theme == AppTheme.Light ? "已切换到亮色主题。" : "已切换到暗色主题。");
+    }
+
+    private void ChromeOpacity_Changed(object sender, RoutedPropertyChangedEventArgs<double> e)
+    {
+        if (_config is null || !_appearanceHydrated)
+        {
+            return;
+        }
+
+        _config.SidebarOpacity = AppearancePolicy.ClampChromeOpacity(SidebarOpacitySlider.Value);
+        _config.PanelOpacity = AppearancePolicy.ClampChromeOpacity(PanelOpacitySlider.Value);
+        ApplyAppearance();
+        SaveConfig();
+    }
+
+    private void BackgroundOpacity_Changed(object sender, RoutedPropertyChangedEventArgs<double> e)
+    {
+        if (_config is null || !_appearanceHydrated)
+        {
+            return;
+        }
+
+        _config.BackgroundOpacity = AppearancePolicy.ClampBackgroundOpacity(BackgroundOpacitySlider.Value);
+        ApplyBackgroundOpacity();
+        SaveConfig();
+    }
+
+    private void ResetAppearance_Click(object sender, RoutedEventArgs e)
+    {
+        _config.Theme = AppTheme.Dark;
+        _config.SidebarOpacity = AppearancePolicy.DefaultSidebarOpacity;
+        _config.PanelOpacity = AppearancePolicy.DefaultPanelOpacity;
+        _config.BackgroundOpacity = AppearancePolicy.DefaultBackgroundOpacity;
+        HydrateAppearance();
+        SaveConfig();
+        ShowToast("外观已恢复默认：暗色主题与推荐透明度。");
+    }
+
     private void BehaviorOption_Changed(object sender, RoutedEventArgs e)
     {
         if (_config is null)
@@ -421,7 +532,12 @@ public sealed class LogRow
     public string TimeText => Entry.Timestamp.ToString("HH:mm:ss");
     public string LevelText => Entry.Level switch { AppLogLevel.Error => "错误", AppLogLevel.Warning => "警告", _ => "信息" };
     public string Message => Entry.Message;
-    public Brush LevelBrush => Entry.Level switch { AppLogLevel.Error => Brushes.LightSalmon, AppLogLevel.Warning => Brushes.Khaki, _ => Brushes.LightGreen };
+    public Brush LevelBrush => Entry.Level switch
+    {
+        AppLogLevel.Error => ThemeBrushes.Error,
+        AppLogLevel.Warning => ThemeBrushes.Warning,
+        _ => ThemeBrushes.SecondaryText
+    };
 
     public LogRow(LogEntry entry) => Entry = entry;
 }

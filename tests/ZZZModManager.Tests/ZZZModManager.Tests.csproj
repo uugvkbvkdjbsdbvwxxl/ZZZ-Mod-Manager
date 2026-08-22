@@ -24,5 +24,8 @@
     <None Include="..\..\src\ZZZModManager\Themes\DarkTheme.xaml"
           Link="Fixtures\DarkTheme.xaml"
           CopyToOutputDirectory="PreserveNewest" />
+    <None Include="..\..\src\ZZZModManager\Themes\LightPalette.xaml"
+          Link="Fixtures\LightPalette.xaml"
+          CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 </Project>
