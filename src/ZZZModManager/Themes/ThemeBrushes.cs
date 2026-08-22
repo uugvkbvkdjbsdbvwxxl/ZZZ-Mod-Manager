@@ -19,7 +19,7 @@ public static class ThemeBrushes
     public static Brush SurfaceRaised => Get("SurfaceRaisedBrush");
     public static Brush SurfaceSunken => Get("SurfaceSunkenBrush");
     public static Brush Border => Get("BorderBrush");
-    public static Brush BorderStrong => Get("BorderStrongBrush");
+    public static Brush BorderStrong => Get("StrongBorderBrush");
     public static Brush Text => Get("TextBrush");
     public static Brush SecondaryText => Get("SecondaryTextBrush");
     public static Brush MutedText => Get("MutedTextBrush");
@@ -42,14 +42,24 @@ public static class ThemeBrushes
                 return cached;
             }
 
+            // Deliberately NOT frozen: AppearanceController repaints the theme by
+            // mutating the Color of the very brush instances held in the resource
+            // dictionary, and a frozen copy would pin imperative consumers to the
+            // palette that happened to be active when they first asked for it.
             var brush = Lookup(key) ?? Brushes.Transparent;
-            if (brush.CanFreeze && !brush.IsFrozen)
-            {
-                brush = (Brush)brush.GetCurrentValueAsFrozen();
-            }
-
             Resolved[key] = brush;
             return brush;
+        }
+    }
+
+    // Called after the application dictionary is rebuilt so cached instances that
+    // no longer belong to it are dropped instead of silently going stale.
+    public static void Invalidate()
+    {
+        lock (Sync)
+        {
+            Resolved.Clear();
+            _standalone = null;
         }
     }
 

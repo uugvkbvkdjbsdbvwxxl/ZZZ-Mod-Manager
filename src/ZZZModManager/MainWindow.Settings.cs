@@ -313,6 +313,90 @@ public partial class MainWindow
         BackgroundPathText.Text = image is null ? "背景图无法读取" : $"当前：{Path.GetFileName(path)}";
     }
 
+    // Hydration writes to the controls, which fires their change handlers before
+    // the config has anything new to store; the flag keeps those echoes from
+    // rewriting the file on every start.
+    private void HydrateAppearance()
+    {
+        _appearanceHydrated = false;
+        ThemeComboBox.SelectedValue = _config.Theme.ToString();
+        SidebarOpacitySlider.Value = AppearancePolicy.ClampChromeOpacity(_config.SidebarOpacity);
+        PanelOpacitySlider.Value = AppearancePolicy.ClampChromeOpacity(_config.PanelOpacity);
+        BackgroundOpacitySlider.Value = AppearancePolicy.ClampBackgroundOpacity(_config.BackgroundOpacity);
+        _appearanceHydrated = true;
+
+        _appearance ??= new AppearanceController(Application.Current.Resources);
+        ApplyAppearance();
+    }
+
+    private void ApplyAppearance()
+    {
+        _appearance?.Apply(_config);
+        ApplyBackgroundOpacity();
+    }
+
+    // The image carries the user's value directly and the veil above it carries
+    // the inverse, so "背景图强度 = 1" really means an unobstructed picture.
+    private void ApplyBackgroundOpacity()
+    {
+        var opacity = AppearancePolicy.ClampBackgroundOpacity(_config.BackgroundOpacity);
+        BackgroundImage.Opacity = opacity;
+        BackgroundVeil.Opacity = AppearancePolicy.VeilOpacityFor(opacity);
+    }
+
+    private void Theme_Changed(object sender, SelectionChangedEventArgs e)
+    {
+        if (_config is null
+            || !_appearanceHydrated
+            || ThemeComboBox?.SelectedValue is not string value
+            || !Enum.TryParse<AppTheme>(value, ignoreCase: true, out var theme)
+            || _config.Theme == theme)
+        {
+            return;
+        }
+
+        _config.Theme = theme;
+        ApplyAppearance();
+        SaveConfig();
+        ShowToast(theme == AppTheme.Light ? "已切换到亮色主题。" : "已切换到暗色主题。");
+    }
+
+    private void ChromeOpacity_Changed(object sender, RoutedPropertyChangedEventArgs<double> e)
+    {
+        if (_config is null || !_appearanceHydrated)
+        {
+            return;
+        }
+
+        _config.SidebarOpacity = AppearancePolicy.ClampChromeOpacity(SidebarOpacitySlider.Value);
+        _config.PanelOpacity = AppearancePolicy.ClampChromeOpacity(PanelOpacitySlider.Value);
+        ApplyAppearance();
+        SaveConfig();
+    }
+
+    private void BackgroundOpacity_Changed(object sender, RoutedPropertyChangedEventArgs<double> e)
+    {
+        if (_config is null || !_appearanceHydrated)
+        {
+            return;
+        }
+
+        _config.BackgroundOpacity = AppearancePolicy.ClampBackgroundOpacity(BackgroundOpacitySlider.Value);
+        ApplyBackgroundOpacity();
+        SaveConfig();
+    }
+
+    private void ResetAppearance_Click(object sender, RoutedEventArgs e)
+    {
+        _config.Theme = AppTheme.Dark;
+        _config.SidebarOpacity = AppearancePolicy.DefaultSidebarOpacity;
+        _config.PanelOpacity = AppearancePolicy.DefaultPanelOpacity;
+        _config.BackgroundOpacity = AppearancePolicy.DefaultBackgroundOpacity;
+        HydrateAppearance();
+        SaveConfig();
+        ShowToast("外观已恢复默认：暗色主题与推荐透明度。");
+    }
+
     private void BehaviorOption_Changed(object sender, RoutedEventArgs e)
     {
         if (_config is null)

@@ -149,6 +149,13 @@ public sealed class AppConfig
     // the historical close-button behavior for existing installations.
     public WindowCloseBehavior CloseBehavior { get; set; } = WindowCloseBehavior.Exit;
     public int InjectionTimeoutSeconds { get; set; } = 30;
+    // Appearance defaults reproduce the previous look for existing installations:
+    // dark palette, near-opaque chrome, and a background image that is finally
+    // visible instead of being buried under a fixed veil.
+    public AppTheme Theme { get; set; } = AppTheme.Dark;
+    public double SidebarOpacity { get; set; } = AppearancePolicy.DefaultSidebarOpacity;
+    public double PanelOpacity { get; set; } = AppearancePolicy.DefaultPanelOpacity;
+    public double BackgroundOpacity { get; set; } = AppearancePolicy.DefaultBackgroundOpacity;
 }
 
 public sealed record ModStateRequest(string ModId, bool Enabled);

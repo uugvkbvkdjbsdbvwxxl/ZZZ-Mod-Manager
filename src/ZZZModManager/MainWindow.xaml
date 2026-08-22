@@ -7,9 +7,11 @@
         UseLayoutRounding="True" SnapsToDevicePixels="True"
         KeyDown="Window_KeyDown">
     <Grid Background="{StaticResource CanvasBrush}">
-        <Image x:Name="BackgroundImage" Stretch="UniformToFill" Opacity="0.18" Visibility="Collapsed"
+        <Image x:Name="BackgroundImage" Stretch="UniformToFill" Visibility="Collapsed"
                IsHitTestVisible="False" CacheMode="BitmapCache" RenderOptions.BitmapScalingMode="LowQuality" />
-        <Rectangle Fill="{StaticResource CanvasBrush}" Opacity="0.78" IsHitTestVisible="False" />
+        <!-- 遮罩由背景图透明度反向驱动：图越亮遮罩越薄，透明度调到最大时背景图完全可见。 -->
+        <Rectangle x:Name="BackgroundVeil" Fill="{StaticResource CanvasBrush}" Opacity="0.55"
+                   IsHitTestVisible="False" />
 
         <Grid>
             <Grid.ColumnDefinitions>
@@ -341,13 +343,41 @@
                         <Border Style="{StaticResource PanelBorder}" Margin="0,0,0,8">
                             <StackPanel>
                                 <TextBlock Text="外观" FontSize="16" FontWeight="SemiBold" />
-                                <TextBlock Text="背景图只作弱化氛围，不影响状态与文字识别。"
-                                           Margin="3,4,0,7" Foreground="{StaticResource SecondaryTextBrush}" />
-                                <TextBlock x:Name="BackgroundPathText" Margin="3,0,0,5"
+                                <TextBlock Text="主题决定配色，透明度只影响装饰层，不会削弱状态与文字识别。"
+                                           Margin="3,4,0,7" Foreground="{StaticResource SecondaryTextBrush}"
+                                           TextWrapping="Wrap" />
+                                <TextBlock Text="界面主题" Margin="3,0,0,4"
+                                           Foreground="{StaticResource MutedTextBrush}" />
+                                <ComboBox x:Name="ThemeComboBox" Width="245" HorizontalAlignment="Left"
+                                          SelectedValuePath="Tag" SelectionChanged="Theme_Changed">
+                                    <ComboBoxItem Tag="Dark" Content="暗色" />
+                                    <ComboBoxItem Tag="Light" Content="亮色" />
+                                </ComboBox>
+                                <TextBlock Text="菜单栏透明度" Margin="3,10,0,4"
+                                           Foreground="{StaticResource MutedTextBrush}" />
+                                <Slider x:Name="SidebarOpacitySlider" Width="245" HorizontalAlignment="Left"
+                                        Minimum="0.45" Maximum="1" TickFrequency="0.05"
+                                        IsSnapToTickEnabled="True"
+                                        ValueChanged="ChromeOpacity_Changed" />
+                                <TextBlock Text="界面面板透明度" Margin="3,10,0,4"
+                                           Foreground="{StaticResource MutedTextBrush}" />
+                                <Slider x:Name="PanelOpacitySlider" Width="245" HorizontalAlignment="Left"
+                                        Minimum="0.45" Maximum="1" TickFrequency="0.05"
+                                        IsSnapToTickEnabled="True"
+                                        ValueChanged="ChromeOpacity_Changed" />
+                                <TextBlock Text="背景图强度" Margin="3,10,0,4"
+                                           Foreground="{StaticResource MutedTextBrush}" />
+                                <Slider x:Name="BackgroundOpacitySlider" Width="245" HorizontalAlignment="Left"
+                                        Minimum="0" Maximum="1" TickFrequency="0.05"
+                                        IsSnapToTickEnabled="True"
+                                        ValueChanged="BackgroundOpacity_Changed" />
+                                <TextBlock x:Name="BackgroundPathText" Margin="3,10,0,5"
                                            Foreground="{StaticResource MutedTextBrush}" TextWrapping="Wrap" />
                                 <WrapPanel>
                                     <Button Content="设置背景图" Click="SetBackground_Click" />
                                     <Button Content="清除背景图" Click="ClearBackground_Click" />
+                                    <Button Content="恢复默认外观" Style="{StaticResource UtilityButton}"
+                                            Click="ResetAppearance_Click" />
                                 </WrapPanel>
                             </StackPanel>
                         </Border>

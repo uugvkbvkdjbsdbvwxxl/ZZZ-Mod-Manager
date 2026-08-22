@@ -82,6 +82,8 @@ public partial class MainWindow : Window
     private bool _splitPackageRepairCompleted;
     private bool _splitPackageRepairNoticeShown;
     private bool _allowWindowClose;
+    private AppearanceController? _appearance;
+    private bool _appearanceHydrated;
 
     public MainWindow()
     {
@@ -132,6 +134,7 @@ public partial class MainWindow : Window
         AutoHideCheckBox.IsChecked = _config.AutoHideAfterLiveSwitch;
         ReloadRequiredCheckBox.IsChecked = _config.ReloadWhenRequired;
         CloseBehaviorComboBox.SelectedValue = _config.CloseBehavior.ToString();
+        HydrateAppearance();
         LoadBackground();
 
         _statusTimer.Tick += (_, _) => UpdateRuntimeAndGameStatus();

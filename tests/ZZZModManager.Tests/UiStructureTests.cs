@@ -40,7 +40,9 @@ public sealed class UiStructureTests
                      "ModGroupsItemsControl", "EmptyStateBorder", "EmptyStateText", "GamePathBox",
                      "ImportDropZone", "AutoHideCheckBox", "ReloadRequiredCheckBox",
                      "CloseBehaviorComboBox", "LogSearchBox", "LogListBox", "ToastBorder",
-                     "LightboxOverlay", "LightboxImage", "LightboxZoomSlider"
+                     "LightboxOverlay", "LightboxImage", "LightboxZoomSlider",
+                     "BackgroundImage", "BackgroundVeil", "ThemeComboBox",
+                     "SidebarOpacitySlider", "PanelOpacitySlider", "BackgroundOpacitySlider"
                  })
         {
             Assert.Contains(name, names);
