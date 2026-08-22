@@ -27,13 +27,24 @@ tests/ZZZModManager.Tests/
 
 ## 构建与测试
 
-需要 .NET 10 SDK。先用 `dotnet --list-sdks` 确认 SDK 存在：若输出为空（例如机器上只装了运行时），则本环境无法构建与测试，此时必须明确说明"未验证"，不得凭代码阅读断言构建通过。
+需要 .NET 10 SDK。先用 `dotnet --list-sdks` 确认：若输出为空（机器上只装了运行时），可在仓库内做局部安装，不污染系统环境（`.dotnet-sdk/` 与 `.dotnet-install.ps1` 已被 `.gitignore` 忽略）：
+
+```powershell
+Invoke-WebRequest -Uri "https://dot.net/v1/dotnet-install.ps1" -OutFile ".dotnet-install.ps1" -UseBasicParsing
+& .\.dotnet-install.ps1 -Channel 10.0 -InstallDir "$PWD\.dotnet-sdk" -NoPath
+$env:DOTNET_ROOT = "$PWD\.dotnet-sdk"; $env:PATH = "$PWD\.dotnet-sdk;$env:PATH"
+```
+
+若 `dotnet nuget list source` 显示"找不到任何源"，还原会以 `NU1100` 全量失败。此时在仓库根目录放一份 `NuGet.config` 显式声明 `nuget.org`，不要去改用户级 `%APPDATA%\NuGet\NuGet.Config`。
 
 ```powershell
 dotnet restore .\ZZModManager.sln
-dotnet test .\ZZModManager.sln -c Release
+dotnet build .\ZZModManager.sln -c Release --no-restore
+dotnet test .\ZZModManager.sln -c Release --no-build
 dotnet publish .\src\ZZZModManager\ZZZModManager.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -o .\artifacts\win-x64
 ```
+
+基线（.NET SDK 10.0.400）：构建 0 警告 0 错误，测试 78 个全部通过，发布产物为单文件 `ZZZModManager.exe`（约 141 MB，自包含）。改动后若数字低于此基线，属于回归。
 
 仓库没有独立的 lint / typecheck 脚本，`dotnet build` 与 `dotnet test` 即为质量门；由于警告即错误，构建通过等同于静态检查通过。
 
