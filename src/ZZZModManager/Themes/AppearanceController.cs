@@ -11,6 +11,13 @@ namespace ZZZModManager.Themes;
 // element painted with the old instances. Mutating Color on the live brushes
 // pushes a change notification through WPF and repaints the shell, the dialogs
 // and the native popup chrome in one pass.
+//
+// This only works while the brushes stay thawed. WPF seals every Style and
+// ControlTemplate the first time it is applied, and sealing freezes any Freezable
+// handed to a Setter as a literal value - which is why every brush reference in
+// XAML and in code-built Setters must be {DynamicResource ...} rather than
+// {StaticResource ...}. Repaint keeps a clone-and-replace fallback so a stray
+// literal reference degrades into a one-off repaint instead of crashing startup.
 public sealed class AppearanceController
 {
     private const string LightPaletteUri = "/ZZZModManager;component/Themes/LightPalette.xaml";
@@ -95,24 +102,43 @@ public sealed class AppearanceController
 
         foreach (var (brushKey, colorKey) in BrushColorTokens)
         {
-            if (_resources[brushKey] is not SolidColorBrush brush
-                || !palette.TryGetValue(colorKey, out var color))
+            if (palette.TryGetValue(colorKey, out var color))
             {
-                continue;
+                Repaint(brushKey, WithAlpha(color, AlphaFor(brushKey, sidebarAlpha, panelAlpha)));
             }
-
-            brush.Color = WithAlpha(color, AlphaFor(brushKey, sidebarAlpha, panelAlpha));
         }
 
         foreach (var (key, colorKey) in SystemBrushTokens)
         {
-            if (_resources[key] is SolidColorBrush brush && palette.TryGetValue(colorKey, out var color))
+            if (palette.TryGetValue(colorKey, out var color))
             {
-                brush.Color = color;
+                Repaint(key, color);
             }
         }
 
         CurrentTheme = config.Theme;
+    }
+
+    // A frozen brush cannot be repainted, so swap the dictionary entry for a thawed
+    // clone. Elements bound through DynamicResource pick the clone up immediately;
+    // any element still holding the frozen instance keeps its old colour, which is a
+    // stale pixel rather than an unhandled exception on startup.
+    private void Repaint(object brushKey, Color color)
+    {
+        if (_resources[brushKey] is not SolidColorBrush brush)
+        {
+            return;
+        }
+
+        if (brush.IsFrozen)
+        {
+            var thawed = brush.Clone();
+            thawed.Color = color;
+            _resources[brushKey] = thawed;
+            return;
+        }
+
+        brush.Color = color;
     }
 
     private static byte AlphaFor(string brushKey, byte sidebarAlpha, byte panelAlpha)

@@ -206,7 +206,7 @@ public sealed class UiStructureTests
         Assert.Contains(
             danger.Elements(PresentationNamespace + "Setter"),
             setter => (string?)setter.Attribute("Property") == "Foreground"
-                      && (string?)setter.Attribute("Value") == "{StaticResource ErrorBrush}");
+                      && (string?)setter.Attribute("Value") == "{DynamicResource ErrorBrush}");
     }
 
     [Fact]
@@ -283,7 +283,7 @@ public sealed class UiStructureTests
 
         Assert.Contains(
             dangerTemplate.Descendants(PresentationNamespace + "Setter"),
-            setter => (string?)setter.Attribute("Value") == "{StaticResource ErrorBrush}");
+            setter => (string?)setter.Attribute("Value") == "{DynamicResource ErrorBrush}");
         Assert.Contains(
             dangerTemplate.Descendants(PresentationNamespace + "Trigger"),
             trigger => (string?)trigger.Attribute("Property") == "IsMouseOver");

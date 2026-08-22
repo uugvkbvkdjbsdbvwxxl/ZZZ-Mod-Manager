@@ -6,11 +6,11 @@
         WindowStartupLocation="CenterScreen" AllowDrop="True"
         UseLayoutRounding="True" SnapsToDevicePixels="True"
         KeyDown="Window_KeyDown">
-    <Grid Background="{StaticResource CanvasBrush}">
+    <Grid Background="{DynamicResource CanvasBrush}">
         <Image x:Name="BackgroundImage" Stretch="UniformToFill" Visibility="Collapsed"
                IsHitTestVisible="False" CacheMode="BitmapCache" RenderOptions.BitmapScalingMode="LowQuality" />
         <!-- 遮罩由背景图透明度反向驱动：图越亮遮罩越薄，透明度调到最大时背景图完全可见。 -->
-        <Rectangle x:Name="BackgroundVeil" Fill="{StaticResource CanvasBrush}" Opacity="0.55"
+        <Rectangle x:Name="BackgroundVeil" Fill="{DynamicResource CanvasBrush}" Opacity="0.55"
                    IsHitTestVisible="False" />
 
         <Grid>
@@ -23,8 +23,8 @@
                 <RowDefinition Height="32" />
             </Grid.RowDefinitions>
 
-            <Border Grid.RowSpan="2" Background="{StaticResource SidebarBrush}"
-                    BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,0,1,0">
+            <Border Grid.RowSpan="2" Background="{DynamicResource SidebarBrush}"
+                    BorderBrush="{DynamicResource BorderBrush}" BorderThickness="0,0,1,0">
                 <Grid Margin="12,16,12,10">
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto" />
@@ -33,10 +33,10 @@
                         <RowDefinition Height="Auto" />
                     </Grid.RowDefinitions>
                     <StackPanel Margin="10,0,8,20">
-                        <TextBlock Text="ZZZ" FontSize="28" FontWeight="Bold" Foreground="{StaticResource AccentBrush}" />
+                        <TextBlock Text="ZZZ" FontSize="28" FontWeight="Bold" Foreground="{DynamicResource AccentBrush}" />
                         <TextBlock Text="MOD MANAGER" FontSize="13" FontWeight="SemiBold" />
                         <TextBlock Text="绝区零 · 本地管理" Margin="0,4,0,0"
-                                   Foreground="{StaticResource MutedTextBrush}" FontSize="11" />
+                                   Foreground="{DynamicResource MutedTextBrush}" FontSize="11" />
                     </StackPanel>
                     <StackPanel Grid.Row="1">
                         <RadioButton x:Name="HomeNavButton" Style="{StaticResource NavButton}" GroupName="Navigation"
@@ -48,11 +48,11 @@
                     </StackPanel>
                     <Border Grid.Row="3" Margin="0,8,0,0" Padding="11,10"
                             CornerRadius="{StaticResource ControlRadius}"
-                            Background="{StaticResource SurfaceBrush}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1">
+                            Background="{DynamicResource SurfaceBrush}" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1">
                         <StackPanel>
-                            <TextBlock Text="Alt + W" FontWeight="SemiBold" Foreground="{StaticResource AccentBrush}" />
+                            <TextBlock Text="Alt + W" FontWeight="SemiBold" Foreground="{DynamicResource AccentBrush}" />
                             <TextBlock Text="游戏内显示 / 隐藏" Margin="0,3,0,0" FontSize="11"
-                                       Foreground="{StaticResource MutedTextBrush}" />
+                                       Foreground="{DynamicResource MutedTextBrush}" />
                         </StackPanel>
                     </Border>
                 </Grid>
@@ -75,12 +75,12 @@
                             <StackPanel VerticalAlignment="Center">
                                 <TextBlock x:Name="HeroTitle" Text="准备启动绝区零" FontSize="24" FontWeight="SemiBold" />
                                 <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
-                                    <Ellipse x:Name="GameStatusDot" Width="8" Height="8" Fill="{StaticResource MutedTextBrush}"
+                                    <Ellipse x:Name="GameStatusDot" Width="8" Height="8" Fill="{DynamicResource MutedTextBrush}"
                                              Margin="0,0,7,0" VerticalAlignment="Center" />
-                                    <TextBlock x:Name="GameStatusText" Text="游戏未运行" Foreground="{StaticResource SecondaryTextBrush}" />
-                                    <TextBlock Text="  ·  " Foreground="{StaticResource MutedTextBrush}" />
+                                    <TextBlock x:Name="GameStatusText" Text="游戏未运行" Foreground="{DynamicResource SecondaryTextBrush}" />
+                                    <TextBlock Text="  ·  " Foreground="{DynamicResource MutedTextBrush}" />
                                     <TextBlock x:Name="RuntimeStatusText" Text="正在校验运行核心…"
-                                               Foreground="{StaticResource SecondaryTextBrush}" />
+                                               Foreground="{DynamicResource SecondaryTextBrush}" />
                                 </StackPanel>
                             </StackPanel>
                             <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
@@ -118,9 +118,9 @@
                                                         <TextBlock Text="{Binding DisplayName}" />
                                                         <Border Margin="7,0,0,0" Padding="5,1"
                                                                 CornerRadius="{StaticResource PillRadius}"
-                                                                Background="{StaticResource SurfaceSunkenBrush}">
+                                                                Background="{DynamicResource SurfaceSunkenBrush}">
                                                             <TextBlock Text="{Binding CountText}" FontSize="10"
-                                                                       Foreground="{StaticResource SecondaryTextBrush}" />
+                                                                       Foreground="{DynamicResource SecondaryTextBrush}" />
                                                         </Border>
                                                     </StackPanel>
                                                 </Button>
@@ -141,15 +141,15 @@
                                     <ColumnDefinition Width="Auto" />
                                 </Grid.ColumnDefinitions>
                                 <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                                    <TextBlock Text="搜索" Foreground="{StaticResource SecondaryTextBrush}"
+                                    <TextBlock Text="搜索" Foreground="{DynamicResource SecondaryTextBrush}"
                                                VerticalAlignment="Center" Margin="0,0,5,0" />
-                                    <TextBlock Text="Mod / 角色 / 依赖" Foreground="{StaticResource MutedTextBrush}"
+                                    <TextBlock Text="Mod / 角色 / 依赖" Foreground="{DynamicResource MutedTextBrush}"
                                                VerticalAlignment="Center" FontSize="11" Margin="0,0,4,0" />
                                     <TextBox x:Name="SearchBox" Width="250" ToolTip="搜索 Mod 名称、角色或依赖"
                                              TextChanged="SearchBox_TextChanged" />
                                 </StackPanel>
                                 <TextBlock Grid.Column="1" x:Name="FilterResultText" VerticalAlignment="Center"
-                                           Margin="10,0,4,0" Foreground="{StaticResource MutedTextBrush}" />
+                                           Margin="10,0,4,0" Foreground="{DynamicResource MutedTextBrush}" />
                                 <ComboBox x:Name="StatusFilterCombo" Grid.Column="2"
                                           SelectionChanged="StatusFilter_SelectionChanged" SelectedIndex="0">
                                     <ComboBoxItem Tag="All" Content="全部状态" />
@@ -189,7 +189,7 @@
                                     <StackPanel Margin="0,2,0,12">
                                         <DockPanel Margin="6,0,8,5" LastChildFill="True">
                                             <TextBlock DockPanel.Dock="Right" Text="{Binding CountText}"
-                                                       Foreground="{StaticResource MutedTextBrush}" />
+                                                       Foreground="{DynamicResource MutedTextBrush}" />
                                             <TextBlock Text="{Binding DisplayName}" FontSize="16" FontWeight="SemiBold" />
                                         </DockPanel>
                                         <ItemsControl ItemsSource="{Binding Mods}">
@@ -206,7 +206,7 @@
                                                                     <RowDefinition Height="*" />
                                                                 </Grid.RowDefinitions>
                                                                 <Button Padding="0" Margin="0" BorderThickness="0"
-                                                                        BorderBrush="Transparent" Background="{StaticResource SurfaceBrush}"
+                                                                        BorderBrush="Transparent" Background="{DynamicResource SurfaceBrush}"
                                                                         Tag="{Binding}" Click="Preview_Click">
                                                                     <Grid ClipToBounds="True">
                                                                         <Image Source="{Binding Thumbnail}" Stretch="UniformToFill"
@@ -214,9 +214,9 @@
                                                                         <StackPanel Visibility="{Binding PreviewPlaceholderVisibility}"
                                                                                     HorizontalAlignment="Center" VerticalAlignment="Center">
                                                                             <TextBlock Text="◌" FontSize="32" HorizontalAlignment="Center"
-                                                                                       Foreground="{StaticResource MutedTextBrush}" />
+                                                                                       Foreground="{DynamicResource MutedTextBrush}" />
                                                                             <TextBlock Text="无 preview.png" Margin="0,4,0,0"
-                                                                                       Foreground="{StaticResource SecondaryTextBrush}" />
+                                                                                       Foreground="{DynamicResource SecondaryTextBrush}" />
                                                                         </StackPanel>
                                                                         <Border HorizontalAlignment="Right" VerticalAlignment="Top" Margin="8" Padding="8,4"
                                                                                 CornerRadius="{StaticResource PillRadius}" Background="{Binding StatusBrush}">
@@ -236,14 +236,14 @@
                                                                     <TextBlock Text="{Binding DisplayName}" FontSize="15" FontWeight="SemiBold"
                                                                                TextTrimming="CharacterEllipsis" />
                                                                     <TextBlock Grid.Row="1" Text="{Binding CharacterDisplayName}" Margin="0,3,0,0"
-                                                                               Foreground="{StaticResource AccentBrush}" TextTrimming="CharacterEllipsis" />
+                                                                               Foreground="{DynamicResource AccentBrush}" TextTrimming="CharacterEllipsis" />
                                                                     <StackPanel Grid.Row="2" Margin="0,7,0,0">
                                                                         <TextBlock Text="{Binding CapabilityText}" FontSize="11"
                                                                                    Foreground="{Binding CapabilityBrush}" TextWrapping="Wrap" />
                                                                         <TextBlock Text="{Binding DependencyText}" Margin="0,3,0,0" FontSize="11"
-                                                                                   Foreground="{StaticResource WarningBrush}" TextWrapping="Wrap" />
+                                                                                   Foreground="{DynamicResource WarningBrush}" TextWrapping="Wrap" />
                                                                         <TextBlock Text="{Binding RuntimeMessage}" Margin="0,3,0,0" FontSize="11"
-                                                                                   Foreground="{StaticResource InfoBrush}" TextWrapping="Wrap" />
+                                                                                   Foreground="{DynamicResource InfoBrush}" TextWrapping="Wrap" />
                                                                     </StackPanel>
                                                                     <Button Grid.Row="3" x:Name="CardToggleButton"
                                                                             Tag="{Binding}" Click="ToggleMod_Click"
@@ -285,7 +285,7 @@
                                 <TextBlock Text="没有匹配的 Mod" FontSize="17" FontWeight="SemiBold"
                                            HorizontalAlignment="Center" />
                                 <TextBlock x:Name="EmptyStateText" Text="尝试清除搜索、角色或状态筛选。"
-                                           Margin="0,6,0,10" Foreground="{StaticResource SecondaryTextBrush}"
+                                           Margin="0,6,0,10" Foreground="{DynamicResource SecondaryTextBrush}"
                                            TextWrapping="Wrap" TextAlignment="Center" />
                                 <Button Content="清除筛选" Click="ClearFilters_Click" HorizontalAlignment="Center" />
                             </StackPanel>
@@ -299,15 +299,15 @@
                         <StackPanel Margin="3,0,0,12">
                             <TextBlock Text="设置" FontSize="26" FontWeight="SemiBold" />
                             <TextBlock Text="运行核心、导入、外观与切换行为" Margin="0,4,0,0"
-                                       Foreground="{StaticResource SecondaryTextBrush}" />
+                                       Foreground="{DynamicResource SecondaryTextBrush}" />
                         </StackPanel>
                         <Border Style="{StaticResource PanelBorder}" Margin="0,0,0,8">
                             <StackPanel>
                                 <TextBlock Text="游戏与运行核心" FontSize="16" FontWeight="SemiBold" />
                                 <TextBlock Text="告诉管理器游戏位置，并确认 XXMI / ZZMI 运行核心可用。"
-                                           Margin="3,4,0,8" Foreground="{StaticResource SecondaryTextBrush}" />
+                                           Margin="3,4,0,8" Foreground="{DynamicResource SecondaryTextBrush}" />
                                 <TextBlock Text="ZenlessZoneZero.exe" Margin="3,0,0,2"
-                                           Foreground="{StaticResource MutedTextBrush}" FontSize="11" />
+                                           Foreground="{DynamicResource MutedTextBrush}" FontSize="11" />
                                 <Grid>
                                     <Grid.ColumnDefinitions>
                                         <ColumnDefinition Width="*" />
@@ -330,7 +330,7 @@
                                     <TextBlock Text="把 GameBanana 的 ZIP / 7Z / RAR 或文件夹拖到这里"
                                                FontSize="16" FontWeight="SemiBold" HorizontalAlignment="Center" />
                                     <TextBlock Text="自动识别 Mod 根目录，扫描后安装副本。"
-                                               Margin="0,4,0,7" Foreground="{StaticResource SecondaryTextBrush}"
+                                               Margin="0,4,0,7" Foreground="{DynamicResource SecondaryTextBrush}"
                                                HorizontalAlignment="Center" />
                                     <WrapPanel HorizontalAlignment="Center">
                                         <Button Content="导入压缩包" Click="ImportMods_Click" />
@@ -344,35 +344,35 @@
                             <StackPanel>
                                 <TextBlock Text="外观" FontSize="16" FontWeight="SemiBold" />
                                 <TextBlock Text="主题决定配色，透明度只影响装饰层，不会削弱状态与文字识别。"
-                                           Margin="3,4,0,7" Foreground="{StaticResource SecondaryTextBrush}"
+                                           Margin="3,4,0,7" Foreground="{DynamicResource SecondaryTextBrush}"
                                            TextWrapping="Wrap" />
                                 <TextBlock Text="界面主题" Margin="3,0,0,4"
-                                           Foreground="{StaticResource MutedTextBrush}" />
+                                           Foreground="{DynamicResource MutedTextBrush}" />
                                 <ComboBox x:Name="ThemeComboBox" Width="245" HorizontalAlignment="Left"
                                           SelectedValuePath="Tag" SelectionChanged="Theme_Changed">
                                     <ComboBoxItem Tag="Dark" Content="暗色" />
                                     <ComboBoxItem Tag="Light" Content="亮色" />
                                 </ComboBox>
                                 <TextBlock Text="菜单栏透明度" Margin="3,10,0,4"
-                                           Foreground="{StaticResource MutedTextBrush}" />
+                                           Foreground="{DynamicResource MutedTextBrush}" />
                                 <Slider x:Name="SidebarOpacitySlider" Width="245" HorizontalAlignment="Left"
                                         Minimum="0.45" Maximum="1" TickFrequency="0.05"
                                         IsSnapToTickEnabled="True"
                                         ValueChanged="ChromeOpacity_Changed" />
                                 <TextBlock Text="界面面板透明度" Margin="3,10,0,4"
-                                           Foreground="{StaticResource MutedTextBrush}" />
+                                           Foreground="{DynamicResource MutedTextBrush}" />
                                 <Slider x:Name="PanelOpacitySlider" Width="245" HorizontalAlignment="Left"
                                         Minimum="0.45" Maximum="1" TickFrequency="0.05"
                                         IsSnapToTickEnabled="True"
                                         ValueChanged="ChromeOpacity_Changed" />
                                 <TextBlock Text="背景图强度" Margin="3,10,0,4"
-                                           Foreground="{StaticResource MutedTextBrush}" />
+                                           Foreground="{DynamicResource MutedTextBrush}" />
                                 <Slider x:Name="BackgroundOpacitySlider" Width="245" HorizontalAlignment="Left"
                                         Minimum="0" Maximum="1" TickFrequency="0.05"
                                         IsSnapToTickEnabled="True"
                                         ValueChanged="BackgroundOpacity_Changed" />
                                 <TextBlock x:Name="BackgroundPathText" Margin="3,10,0,5"
-                                           Foreground="{StaticResource MutedTextBrush}" TextWrapping="Wrap" />
+                                           Foreground="{DynamicResource MutedTextBrush}" TextWrapping="Wrap" />
                                 <WrapPanel>
                                     <Button Content="设置背景图" Click="SetBackground_Click" />
                                     <Button Content="清除背景图" Click="ClearBackground_Click" />
@@ -385,7 +385,7 @@
                             <StackPanel>
                                 <TextBlock Text="切换行为" FontSize="16" FontWeight="SemiBold" />
                                 <TextBlock Text="管理器会把可安全控制的变化发送给运行中的游戏；渲染结果需在游戏内确认。"
-                                           Margin="3,4,0,4" Foreground="{StaticResource SecondaryTextBrush}"
+                                           Margin="3,4,0,4" Foreground="{DynamicResource SecondaryTextBrush}"
                                            TextWrapping="Wrap" />
                                 <CheckBox x:Name="AutoHideCheckBox"
                                           Content="实时切换命令发送且状态保存后隐藏管理器并切回游戏"
@@ -393,7 +393,7 @@
                                 <CheckBox x:Name="ReloadRequiredCheckBox"
                                           Content="首次同步、导入或目录变化时自动执行一次安全重载"
                                           Click="BehaviorOption_Changed" />
-                                <TextBlock Text="窗口关闭按钮" Margin="3,8,0,4" Foreground="{StaticResource MutedTextBrush}" />
+                                <TextBlock Text="窗口关闭按钮" Margin="3,8,0,4" Foreground="{DynamicResource MutedTextBrush}" />
                                 <WrapPanel>
                                     <ComboBox x:Name="CloseBehaviorComboBox" Width="245"
                                               SelectedValuePath="Tag" SelectionChanged="CloseBehavior_Changed">
@@ -405,24 +405,24 @@
                                 <StackPanel x:Name="SwitchBehaviorNotes" MaxWidth="620"
                                             HorizontalAlignment="Left" Margin="4,10,0,0">
                                     <TextBlock Text="立即生效" FontWeight="SemiBold"
-                                               Foreground="{StaticResource SuccessBrush}" />
+                                               Foreground="{DynamicResource SuccessBrush}" />
                                     <TextBlock Text="· 普通切换发送绝对状态命令；同角色或同 hash 切换会自动安全刷新。"
                                                Margin="0,4,0,0" TextWrapping="Wrap"
-                                               Foreground="{StaticResource SecondaryTextBrush}" />
+                                               Foreground="{DynamicResource SecondaryTextBrush}" />
                                     <TextBlock Text="· 启动游戏前已预载全部静态 Mod，同 hash 由 XXMI 按最大字节容量处理。"
                                                Margin="0,3,0,0" TextWrapping="Wrap"
-                                               Foreground="{StaticResource SecondaryTextBrush}" />
+                                               Foreground="{DynamicResource SecondaryTextBrush}" />
                                     <TextBlock Text="需要重启游戏" Margin="0,11,0,0" FontWeight="SemiBold"
-                                               Foreground="{StaticResource WarningBrush}" />
+                                               Foreground="{DynamicResource WarningBrush}" />
                                     <TextBlock Text="· 游戏运行之后才新增、因此尚未被预载的静态 Mod。"
                                                Margin="0,4,0,0" TextWrapping="Wrap"
-                                               Foreground="{StaticResource SecondaryTextBrush}" />
+                                               Foreground="{DynamicResource SecondaryTextBrush}" />
                                     <TextBlock Text="· 规则升级尚未完成启动前准备，需由管理器重新启动一次。"
                                                Margin="0,3,0,0" TextWrapping="Wrap"
-                                               Foreground="{StaticResource SecondaryTextBrush}" />
+                                               Foreground="{DynamicResource SecondaryTextBrush}" />
                                     <TextBlock Text="F10 只用于隐藏 ZZMI 首次帮助提示，安全重载走独立内部通道；管理器读不到游戏渲染结果，最终画面请在游戏内确认。"
                                                Margin="0,11,0,0" TextWrapping="Wrap"
-                                               Foreground="{StaticResource MutedTextBrush}" />
+                                               Foreground="{DynamicResource MutedTextBrush}" />
                                 </StackPanel>
                             </StackPanel>
                         </Border>
@@ -438,7 +438,7 @@
                     <StackPanel Margin="3,0,0,10">
                         <TextBlock Text="日志" FontSize="26" FontWeight="SemiBold" />
                         <TextBlock x:Name="LogRetentionText" Margin="0,4,0,0"
-                                   Foreground="{StaticResource SecondaryTextBrush}" />
+                                   Foreground="{DynamicResource SecondaryTextBrush}" />
                     </StackPanel>
                     <Border Grid.Row="1" Style="{StaticResource PanelBorder}" Padding="7" Margin="0,0,0,8">
                         <Grid>
@@ -450,7 +450,7 @@
                                 <ColumnDefinition Width="Auto" />
                             </Grid.ColumnDefinitions>
                             <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                                <TextBlock Text="搜索" Foreground="{StaticResource SecondaryTextBrush}"
+                                <TextBlock Text="搜索" Foreground="{DynamicResource SecondaryTextBrush}"
                                            VerticalAlignment="Center" Margin="3,0,5,0" />
                                 <TextBox x:Name="LogSearchBox" Width="260" ToolTip="搜索日志内容或级别"
                                          TextChanged="LogSearchBox_TextChanged" />
@@ -472,7 +472,7 @@
                                             <ColumnDefinition Width="58" />
                                             <ColumnDefinition Width="*" />
                                         </Grid.ColumnDefinitions>
-                                        <TextBlock Text="{Binding TimeText}" Foreground="{StaticResource MutedTextBrush}"
+                                        <TextBlock Text="{Binding TimeText}" Foreground="{DynamicResource MutedTextBrush}"
                                                    FontSize="11" />
                                         <TextBlock Grid.Column="1" Text="{Binding LevelText}" Foreground="{Binding LevelBrush}"
                                                    FontWeight="SemiBold" FontSize="11" />
@@ -487,14 +487,14 @@
 
             <DockPanel Grid.Column="1" Grid.Row="1" Margin="17,0,17,0">
                 <TextBlock x:Name="StatusText" VerticalAlignment="Center"
-                           Foreground="{StaticResource MutedTextBrush}" FontSize="11" />
+                           Foreground="{DynamicResource MutedTextBrush}" FontSize="11" />
                 <TextBlock x:Name="BusyText" DockPanel.Dock="Right" VerticalAlignment="Center"
-                           Foreground="{StaticResource AccentBrush}" FontSize="11" />
+                           Foreground="{DynamicResource AccentBrush}" FontSize="11" />
             </DockPanel>
             <Border x:Name="ToastBorder" Grid.Column="1" Grid.Row="0" Visibility="Collapsed"
                     HorizontalAlignment="Center" VerticalAlignment="Top"
                     Margin="0,18,0,0" Padding="15,10" CornerRadius="{StaticResource ControlRadius}"
-                    Background="{StaticResource SurfaceRaisedBrush}" BorderBrush="{StaticResource AccentBrush}" BorderThickness="1">
+                    Background="{DynamicResource SurfaceRaisedBrush}" BorderBrush="{DynamicResource AccentBrush}" BorderThickness="1">
                 <TextBlock x:Name="ToastText" MaxWidth="720" TextWrapping="Wrap" />
             </Border>
         </Grid>
