@@ -44,7 +44,8 @@
                         <RadioButton Style="{StaticResource NavButton}" GroupName="Navigation"
                                      Content="≡   日志" Tag="Logs" Checked="Navigation_Click" />
                     </StackPanel>
-                    <Border Grid.Row="3" Margin="0,8,0,0" Padding="11,10" CornerRadius="8"
+                    <Border Grid.Row="3" Margin="0,8,0,0" Padding="11,10"
+                            CornerRadius="{StaticResource ControlRadius}"
                             Background="{StaticResource SurfaceBrush}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1">
                         <StackPanel>
                             <TextBlock Text="Alt + W" FontWeight="SemiBold" Foreground="{StaticResource AccentBrush}" />
@@ -93,31 +94,44 @@
                             <Grid.RowDefinitions>
                                 <RowDefinition Height="Auto" />
                                 <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
                             </Grid.RowDefinitions>
-                            <ItemsControl x:Name="CharacterFiltersItemsControl">
-                                <ItemsControl.ItemsPanel>
-                                    <ItemsPanelTemplate>
-                                        <WrapPanel />
-                                    </ItemsPanelTemplate>
-                                </ItemsControl.ItemsPanel>
-                                <ItemsControl.ItemTemplate>
-                                    <DataTemplate>
-                                        <Button Tag="{Binding Key}" Click="CharacterFilter_Click"
-                                                Background="{Binding Background}" BorderBrush="{Binding BorderBrush}"
-                                                Padding="10,6" MinHeight="32">
-                                            <StackPanel Orientation="Horizontal">
-                                                <TextBlock Text="{Binding DisplayName}" />
-                                                <Border Margin="7,0,0,0" Padding="5,1" CornerRadius="6"
-                                                        Background="#FF0F1720">
-                                                    <TextBlock Text="{Binding CountText}" FontSize="10"
-                                                               Foreground="{StaticResource SecondaryTextBrush}" />
-                                                </Border>
-                                            </StackPanel>
-                                        </Button>
-                                    </DataTemplate>
-                                </ItemsControl.ItemTemplate>
-                            </ItemsControl>
-                            <Grid Grid.Row="1" Margin="3,8,3,0">
+                            <Border x:Name="CharacterFilterClip" ClipToBounds="True" MaxHeight="82"
+                                    GotKeyboardFocus="CharacterFilterClip_GotKeyboardFocus">
+                                <StackPanel>
+                                    <ItemsControl x:Name="CharacterFiltersItemsControl"
+                                                  SizeChanged="CharacterFilters_SizeChanged">
+                                        <ItemsControl.ItemsPanel>
+                                            <ItemsPanelTemplate>
+                                                <WrapPanel />
+                                            </ItemsPanelTemplate>
+                                        </ItemsControl.ItemsPanel>
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate>
+                                                <Button Tag="{Binding Key}" Click="CharacterFilter_Click"
+                                                        Background="{Binding Background}" BorderBrush="{Binding BorderBrush}"
+                                                        Foreground="{Binding Foreground}" FontWeight="{Binding LabelWeight}"
+                                                        Padding="10,6" MinHeight="34">
+                                                    <StackPanel Orientation="Horizontal">
+                                                        <TextBlock Text="{Binding DisplayName}" />
+                                                        <Border Margin="7,0,0,0" Padding="5,1"
+                                                                CornerRadius="{StaticResource PillRadius}"
+                                                                Background="{StaticResource SurfaceSunkenBrush}">
+                                                            <TextBlock Text="{Binding CountText}" FontSize="10"
+                                                                       Foreground="{StaticResource SecondaryTextBrush}" />
+                                                        </Border>
+                                                    </StackPanel>
+                                                </Button>
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
+                                </StackPanel>
+                            </Border>
+                            <Button Grid.Row="1" x:Name="CharacterFilterExpandButton" Visibility="Collapsed"
+                                    Style="{StaticResource GhostButton}" HorizontalAlignment="Left"
+                                    Margin="3,5,0,0" Content="展开全部角色 ▾"
+                                    Click="ToggleCharacterFilterExpand_Click" />
+                            <Grid Grid.Row="2" Margin="3,8,3,0">
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="*" />
                                     <ColumnDefinition Width="Auto" />
@@ -148,25 +162,42 @@
                     </Border>
 
                     <Grid Grid.Row="2">
-                        <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"
-                                      PanningMode="VerticalOnly" CanContentScroll="False">
-                            <ItemsControl x:Name="ModGroupsItemsControl">
-                                <ItemsControl.ItemTemplate>
-                                    <DataTemplate>
-                                        <StackPanel Margin="0,2,0,12">
-                                            <DockPanel Margin="6,0,8,5" LastChildFill="True">
-                                                <TextBlock DockPanel.Dock="Right" Text="{Binding CountText}"
-                                                           Foreground="{StaticResource MutedTextBrush}" />
-                                                <TextBlock Text="{Binding DisplayName}" FontSize="16" FontWeight="SemiBold" />
-                                            </DockPanel>
-                                            <ItemsControl ItemsSource="{Binding Mods}">
-                                                <ItemsControl.ItemsPanel>
-                                                    <ItemsPanelTemplate><WrapPanel /></ItemsPanelTemplate>
-                                                </ItemsControl.ItemsPanel>
-                                                <ItemsControl.ItemTemplate>
-                                                    <DataTemplate>
-                                                        <Border Style="{StaticResource CardBorder}" Width="298" Height="360"
-                                                                BorderBrush="{Binding StatusBrush}">
+                        <ItemsControl x:Name="ModGroupsItemsControl"
+                                      VirtualizingPanel.IsVirtualizing="True"
+                                      VirtualizingPanel.VirtualizationMode="Recycling"
+                                      VirtualizingPanel.ScrollUnit="Pixel"
+                                      VirtualizingPanel.CacheLength="1,1"
+                                      VirtualizingPanel.CacheLengthUnit="Page">
+                            <!-- 虚拟化要求承载 IScrollInfo 的 ScrollViewer 位于 ItemsControl 模板内部，
+                                 放在外面会让面板拿到无限高度，从而一次性实例化全部分组。 -->
+                            <ItemsControl.Template>
+                                <ControlTemplate TargetType="ItemsControl">
+                                    <ScrollViewer x:Name="ModGridScrollViewer" Focusable="False"
+                                                  VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"
+                                                  PanningMode="VerticalOnly" CanContentScroll="True">
+                                        <ItemsPresenter />
+                                    </ScrollViewer>
+                                </ControlTemplate>
+                            </ItemsControl.Template>
+                            <ItemsControl.ItemsPanel>
+                                <ItemsPanelTemplate><VirtualizingStackPanel /></ItemsPanelTemplate>
+                            </ItemsControl.ItemsPanel>
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <StackPanel Margin="0,2,0,12">
+                                        <DockPanel Margin="6,0,8,5" LastChildFill="True">
+                                            <TextBlock DockPanel.Dock="Right" Text="{Binding CountText}"
+                                                       Foreground="{StaticResource MutedTextBrush}" />
+                                            <TextBlock Text="{Binding DisplayName}" FontSize="16" FontWeight="SemiBold" />
+                                        </DockPanel>
+                                        <ItemsControl ItemsSource="{Binding Mods}">
+                                            <ItemsControl.ItemsPanel>
+                                                <ItemsPanelTemplate><WrapPanel /></ItemsPanelTemplate>
+                                            </ItemsControl.ItemsPanel>
+                                            <ItemsControl.ItemTemplate>
+                                                <DataTemplate>
+                                                    <Border Style="{StaticResource CardBorder}" Width="298" Height="360"
+                                                            BorderBrush="{Binding StatusBrush}">
                                                             <Grid>
                                                                 <Grid.RowDefinitions>
                                                                     <RowDefinition Height="126" />
@@ -186,7 +217,7 @@
                                                                                        Foreground="{StaticResource SecondaryTextBrush}" />
                                                                         </StackPanel>
                                                                         <Border HorizontalAlignment="Right" VerticalAlignment="Top" Margin="8" Padding="8,4"
-                                                                                CornerRadius="8" Background="{Binding StatusBrush}">
+                                                                                CornerRadius="{StaticResource PillRadius}" Background="{Binding StatusBrush}">
                                                                             <TextBlock Text="{Binding StatusText}" FontSize="11"
                                                                                        FontWeight="SemiBold" Foreground="{Binding StatusForeground}" />
                                                                         </Border>
@@ -212,27 +243,39 @@
                                                                         <TextBlock Text="{Binding RuntimeMessage}" Margin="0,3,0,0" FontSize="11"
                                                                                    Foreground="{StaticResource InfoBrush}" TextWrapping="Wrap" />
                                                                     </StackPanel>
-                                                                    <Button Grid.Row="3" Tag="{Binding}" Click="ToggleMod_Click"
-                                                                            Style="{StaticResource PrimaryButton}" MinHeight="35"
+                                                                    <Button Grid.Row="3" x:Name="CardToggleButton"
+                                                                            Tag="{Binding}" Click="ToggleMod_Click"
+                                                                            Style="{StaticResource PrimaryButton}" MinHeight="36"
+                                                                            Margin="0,7,0,0"
+                                                                            ToolTip="方向键在卡片间移动，Enter 启用或禁用"
                                                                             Content="{Binding ToggleText}" HorizontalContentAlignment="Center" />
-                                                                    <UniformGrid Grid.Row="4" Columns="5" Margin="-2,2,-2,-2">
-                                                                        <Button Style="{StaticResource UtilityButton}" Content="快捷键" Tag="{Binding}" Click="ShowHotkeys_Click" />
-                                                                        <Button Style="{StaticResource UtilityButton}" Content="诊断" Tag="{Binding}" Click="InspectMod_Click" />
-                                                                        <Button Style="{StaticResource UtilityButton}" Content="目录" Tag="{Binding}" Click="OpenModDirectory_Click" />
-                                                                        <Button Style="{StaticResource UtilityButton}" Content="分组" Tag="{Binding}" Click="ChangeGroup_Click" />
-                                                                        <Button Style="{StaticResource DangerButton}" Content="删除" Tag="{Binding}" Click="DeleteMod_Click" />
-                                                                    </UniformGrid>
+                                                                    <Button Grid.Row="4" x:Name="CardOverflowButton"
+                                                                            Style="{StaticResource GhostButton}" Margin="0,6,0,0"
+                                                                            Content="更多操作 ⋯" Tag="{Binding}"
+                                                                            ToolTip="快捷键 / 诊断 / 目录 / 分组 / 删除"
+                                                                            Click="CardOverflow_Click">
+                                                                        <Button.ContextMenu>
+                                                                            <ContextMenu Placement="Bottom">
+                                                                                <MenuItem Header="游戏内快捷键" Tag="{Binding}" Click="ShowHotkeys_Click" />
+                                                                                <MenuItem Header="导入诊断报告" Tag="{Binding}" Click="InspectMod_Click" />
+                                                                                <MenuItem Header="打开安装目录" Tag="{Binding}" Click="OpenModDirectory_Click" />
+                                                                                <MenuItem Header="更改角色分组" Tag="{Binding}" Click="ChangeGroup_Click" />
+                                                                                <Separator />
+                                                                                <MenuItem Style="{StaticResource DangerMenuItem}" Header="删除安装副本"
+                                                                                          Tag="{Binding}" Click="DeleteMod_Click" />
+                                                                            </ContextMenu>
+                                                                        </Button.ContextMenu>
+                                                                    </Button>
                                                                 </Grid>
                                                             </Grid>
-                                                        </Border>
-                                                    </DataTemplate>
-                                                </ItemsControl.ItemTemplate>
-                                            </ItemsControl>
-                                        </StackPanel>
-                                    </DataTemplate>
-                                </ItemsControl.ItemTemplate>
-                            </ItemsControl>
-                        </ScrollViewer>
+                                                    </Border>
+                                                </DataTemplate>
+                                            </ItemsControl.ItemTemplate>
+                                        </ItemsControl>
+                                    </StackPanel>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
                         <Border x:Name="EmptyStateBorder" Visibility="Collapsed" Width="390"
                                 HorizontalAlignment="Center" VerticalAlignment="Center"
                                 Style="{StaticResource PanelBorder}" Padding="22,18">
@@ -278,7 +321,7 @@
                                 </WrapPanel>
                             </StackPanel>
                         </Border>
-                        <Border x:Name="ImportDropZone" Style="{StaticResource PanelBorder}" Margin="0,0,0,8" MinHeight="112"
+                        <Border x:Name="ImportDropZone" Style="{StaticResource PanelBorder}" Margin="0,0,0,8" MinHeight="88"
                                 AllowDrop="True" Drop="ImportDropZone_Drop" DragOver="ImportDropZone_DragOver">
                             <Grid>
                                 <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center">
@@ -329,9 +372,28 @@
                                     </ComboBox>
                                     <Button Content="退出管理器" Click="ExitManager_Click" />
                                 </WrapPanel>
-                                <TextBlock Text="普通 F10 只用于隐藏 ZZMI 首次帮助提示；管理器安全重载使用独立内部通道。管理器启动游戏前会预载所有静态 Mod，同 hash 由 XXMI 取最大字节容量处理。普通切换发送绝对状态命令；同角色或同 hash 切换可能自动安全刷新但无需重启。只有游戏运行后才新增尚未预载的静态 Mod，或规则升级尚未完成启动前准备时，才需关闭并由管理器重新启动一次。管理器无法读取游戏渲染结果，请在游戏内确认画面。"
-                                           TextWrapping="Wrap" Margin="4,8,0,0"
-                                           Foreground="{StaticResource MutedTextBrush}" />
+                                <StackPanel x:Name="SwitchBehaviorNotes" MaxWidth="620"
+                                            HorizontalAlignment="Left" Margin="4,10,0,0">
+                                    <TextBlock Text="立即生效" FontWeight="SemiBold"
+                                               Foreground="{StaticResource SuccessBrush}" />
+                                    <TextBlock Text="· 普通切换发送绝对状态命令；同角色或同 hash 切换会自动安全刷新。"
+                                               Margin="0,4,0,0" TextWrapping="Wrap"
+                                               Foreground="{StaticResource SecondaryTextBrush}" />
+                                    <TextBlock Text="· 启动游戏前已预载全部静态 Mod，同 hash 由 XXMI 按最大字节容量处理。"
+                                               Margin="0,3,0,0" TextWrapping="Wrap"
+                                               Foreground="{StaticResource SecondaryTextBrush}" />
+                                    <TextBlock Text="需要重启游戏" Margin="0,11,0,0" FontWeight="SemiBold"
+                                               Foreground="{StaticResource WarningBrush}" />
+                                    <TextBlock Text="· 游戏运行之后才新增、因此尚未被预载的静态 Mod。"
+                                               Margin="0,4,0,0" TextWrapping="Wrap"
+                                               Foreground="{StaticResource SecondaryTextBrush}" />
+                                    <TextBlock Text="· 规则升级尚未完成启动前准备，需由管理器重新启动一次。"
+                                               Margin="0,3,0,0" TextWrapping="Wrap"
+                                               Foreground="{StaticResource SecondaryTextBrush}" />
+                                    <TextBlock Text="F10 只用于隐藏 ZZMI 首次帮助提示，安全重载走独立内部通道；管理器读不到游戏渲染结果，最终画面请在游戏内确认。"
+                                               Margin="0,11,0,0" TextWrapping="Wrap"
+                                               Foreground="{StaticResource MutedTextBrush}" />
+                                </StackPanel>
                             </StackPanel>
                         </Border>
                     </StackPanel>
@@ -399,13 +461,13 @@
                 <TextBlock x:Name="BusyText" DockPanel.Dock="Right" VerticalAlignment="Center"
                            Foreground="{StaticResource AccentBrush}" FontSize="11" />
             </DockPanel>
+            <Border x:Name="ToastBorder" Grid.Column="1" Grid.Row="0" Visibility="Collapsed"
+                    HorizontalAlignment="Center" VerticalAlignment="Top"
+                    Margin="0,18,0,0" Padding="15,10" CornerRadius="{StaticResource ControlRadius}"
+                    Background="{StaticResource SurfaceRaisedBrush}" BorderBrush="{StaticResource AccentBrush}" BorderThickness="1">
+                <TextBlock x:Name="ToastText" MaxWidth="720" TextWrapping="Wrap" />
+            </Border>
         </Grid>
-
-        <Border x:Name="ToastBorder" Visibility="Collapsed" HorizontalAlignment="Center" VerticalAlignment="Top"
-                Margin="198,18,18,0" Padding="15,10" CornerRadius="9"
-                Background="{StaticResource SurfaceRaisedBrush}" BorderBrush="{StaticResource AccentBrush}" BorderThickness="1">
-            <TextBlock x:Name="ToastText" MaxWidth="720" TextWrapping="Wrap" />
-        </Border>
 
         <Border x:Name="LightboxOverlay" Visibility="Collapsed" Background="#E9000000"
                 MouseLeftButtonDown="LightboxBackdrop_Click">

@@ -8,6 +8,7 @@ using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using ZZZModManager.Models;
 using ZZZModManager.Services;
+using ZZZModManager.Themes;
 
 namespace ZZZModManager;
 
@@ -108,6 +109,47 @@ public partial class MainWindow
         }
     }
 
+    // 角色数量会随库变化，这里用"内容比两行高就折叠"的方式限高：
+    // 外层 Border 负责裁剪，内层 StackPanel 让 ItemsControl 仍按完整高度测量，
+    // 因此 ActualHeight 反映的是真实内容高度，可直接用来判断是否需要展开按钮。
+    private const double CollapsedCharacterFilterHeight = 82;
+
+    private void CharacterFilters_SizeChanged(object sender, SizeChangedEventArgs e)
+    {
+        UpdateCharacterFilterClip();
+    }
+
+    private void ToggleCharacterFilterExpand_Click(object sender, RoutedEventArgs e)
+    {
+        _characterFiltersExpanded = !_characterFiltersExpanded;
+        UpdateCharacterFilterClip();
+    }
+
+    // 键盘 Tab 可能落到被裁掉的芯片上，那样焦点框看不见，所以焦点进入时自动展开。
+    private void CharacterFilterClip_GotKeyboardFocus(object sender, KeyboardFocusChangedEventArgs e)
+    {
+        if (!_characterFiltersExpanded && CharacterFilterExpandButton.Visibility == Visibility.Visible)
+        {
+            _characterFiltersExpanded = true;
+            UpdateCharacterFilterClip();
+        }
+    }
+
+    private void UpdateCharacterFilterClip()
+    {
+        var overflows = CharacterFiltersItemsControl.ActualHeight > CollapsedCharacterFilterHeight + 1;
+        if (!overflows)
+        {
+            _characterFiltersExpanded = false;
+        }
+
+        CharacterFilterExpandButton.Visibility = overflows ? Visibility.Visible : Visibility.Collapsed;
+        CharacterFilterExpandButton.Content = _characterFiltersExpanded ? "收起角色筛选 ▴" : "展开全部角色 ▾";
+        CharacterFilterClip.MaxHeight = _characterFiltersExpanded
+            ? double.PositiveInfinity
+            : CollapsedCharacterFilterHeight;
+    }
+
     private void ClearFilters_Click(object sender, RoutedEventArgs e)
     {
         _selectedCharacterKey = "all";
@@ -132,9 +174,136 @@ public partial class MainWindow
         }
     }
 
+    // 卡片操作现在同时来自主按钮和溢出菜单项，两者都把卡片放在 Tag 上，
+    // 因此统一在这里取值，避免每个处理器各自判断控件类型。
+    private static ModCardViewModel? CardOf(object sender) => sender switch
+    {
+        FrameworkElement element when element.Tag is ModCardViewModel card => card,
+        _ => null
+    };
+
+    private const string CardToggleButtonName = "CardToggleButton";
+
+    // 一行卡片占据的纵向距离：卡片高 360 加上 CardBorder 上下各 6 的外边距。
+    private const double CardRowPitch = 372;
+    private ScrollViewer? _modGridScrollViewer;
+
+    // 卡片按 WrapPanel 排布，行宽随窗口变化，所以方向键不按索引加减，
+    // 而是按几何位置找目标：先筛出朝向正确的候选，再取投影距离最近的一个。
+    private bool MoveCardFocus(Key key) => MoveCardFocus(key, allowScrollRetry: true);
+
+    private bool MoveCardFocus(Key key, bool allowScrollRetry)
+    {
+        var buttons = FindVisualChildren<Button>(ModGroupsItemsControl)
+            .Where(button => button.Name == CardToggleButtonName && button.IsVisible)
+            .ToList();
+        if (buttons.Count == 0)
+        {
+            return false;
+        }
+
+        var current = buttons.FirstOrDefault(button => button.IsKeyboardFocusWithin);
+        if (current is null)
+        {
+            var first = buttons[0];
+            first.BringIntoView();
+            return first.Focus();
+        }
+
+        var origin = CenterOf(current);
+        Button? best = null;
+        var bestScore = double.MaxValue;
+
+        foreach (var candidate in buttons)
+        {
+            if (ReferenceEquals(candidate, current))
+            {
+                continue;
+            }
+
+            var center = CenterOf(candidate);
+            var dx = center.X - origin.X;
+            var dy = center.Y - origin.Y;
+
+            var (along, across) = key switch
+            {
+                Key.Left => (-dx, Math.Abs(dy)),
+                Key.Right => (dx, Math.Abs(dy)),
+                Key.Up => (-dy, Math.Abs(dx)),
+                _ => (dy, Math.Abs(dx))
+            };
+
+            if (along <= 1)
+            {
+                continue;
+            }
+
+            var score = along + (across * 3);
+            if (score < bestScore)
+            {
+                bestScore = score;
+                best = candidate;
+            }
+        }
+
+        if (best is null)
+        {
+            // 虚拟化之后视野外的卡片没有可视容器，方向上"找不到目标"可能只是还没实例化。
+            // 先按方向滚动一段并重新布局，把焦点接回同一张卡片后再算一次，只重试一次防止空转。
+            if (!allowScrollRetry || !ScrollCardGrid(key))
+            {
+                return false;
+            }
+
+            var anchor = current.Tag;
+            ModGroupsItemsControl.UpdateLayout();
+            FindVisualChildren<Button>(ModGroupsItemsControl)
+                .FirstOrDefault(button => button.Name == CardToggleButtonName
+                    && button.IsVisible
+                    && ReferenceEquals(button.Tag, anchor))
+                ?.Focus();
+            return MoveCardFocus(key, allowScrollRetry: false);
+        }
+
+        best.BringIntoView();
+        return best.Focus();
+    }
+
+    private bool ScrollCardGrid(Key key)
+    {
+        _modGridScrollViewer ??= FindVisualChildren<ScrollViewer>(ModGroupsItemsControl).FirstOrDefault();
+        if (_modGridScrollViewer is null)
+        {
+            return false;
+        }
+
+        var before = _modGridScrollViewer.VerticalOffset;
+        var step = Math.Max(Math.Min(_modGridScrollViewer.ViewportHeight, CardRowPitch), 1);
+        _modGridScrollViewer.ScrollToVerticalOffset(key is Key.Up or Key.Left ? before - step : before + step);
+        _modGridScrollViewer.UpdateLayout();
+        return Math.Abs(_modGridScrollViewer.VerticalOffset - before) > 0.5;
+    }
+
+    private Point CenterOf(FrameworkElement element)
+    {
+        var offset = element.TransformToAncestor(ModGroupsItemsControl).Transform(default);
+        return new Point(offset.X + (element.ActualWidth / 2), offset.Y + (element.ActualHeight / 2));
+    }
+
+    private void CardOverflow_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is not Button button || button.ContextMenu is null)
+        {
+            return;
+        }
+
+        button.ContextMenu.PlacementTarget = button;
+        button.ContextMenu.IsOpen = true;
+    }
+
     private async void ToggleMod_Click(object sender, RoutedEventArgs e)
     {
-        if ((sender as Button)?.Tag is not ModCardViewModel card || _busy)
+        if (CardOf(sender) is not ModCardViewModel card || _busy)
         {
             return;
         }
@@ -212,7 +381,7 @@ public partial class MainWindow
 
     private void InspectMod_Click(object sender, RoutedEventArgs e)
     {
-        if ((sender as Button)?.Tag is not ModCardViewModel card)
+        if (CardOf(sender) is not ModCardViewModel card)
         {
             return;
         }
@@ -236,7 +405,7 @@ public partial class MainWindow
 
     private void ShowHotkeys_Click(object sender, RoutedEventArgs e)
     {
-        if ((sender as Button)?.Tag is not ModCardViewModel card)
+        if (CardOf(sender) is not ModCardViewModel card)
         {
             return;
         }
@@ -254,7 +423,7 @@ public partial class MainWindow
 
     private void OpenModDirectory_Click(object sender, RoutedEventArgs e)
     {
-        if ((sender as Button)?.Tag is ModCardViewModel card)
+        if (CardOf(sender) is ModCardViewModel card)
         {
             Process.Start(new ProcessStartInfo("explorer.exe", $"\"{card.DirectoryPath}\"") { UseShellExecute = true });
         }
@@ -262,7 +431,7 @@ public partial class MainWindow
 
     private void ChangeGroup_Click(object sender, RoutedEventArgs e)
     {
-        if ((sender as Button)?.Tag is not ModCardViewModel card)
+        if (CardOf(sender) is not ModCardViewModel card)
         {
             return;
         }
@@ -285,7 +454,7 @@ public partial class MainWindow
 
     private void DeleteMod_Click(object sender, RoutedEventArgs e)
     {
-        if ((sender as Button)?.Tag is not ModCardViewModel card)
+        if (CardOf(sender) is not ModCardViewModel card)
         {
             return;
         }
@@ -347,6 +516,8 @@ public partial class MainWindow
 
 public sealed class ModCardViewModel
 {
+    internal const int ThumbnailDecodeDimension = 360;
+
     public ModManifest Manifest { get; }
     public CharacterGroupInfo Character { get; }
     public string DirectoryPath { get; }
@@ -354,7 +525,14 @@ public sealed class ModCardViewModel
     public string DisplayName => Manifest.DisplayName;
     public string CharacterDisplayName => Character.DisplayName;
     public string? PreviewPath { get; }
-    public ImageSource? Thumbnail { get; }
+
+    // 缩略图按需解码：卡片容器由虚拟化面板实例化时绑定才会读到这里，
+    // 视野外的 Mod 因此不付出解码成本。不在视图模型里缓存位图，
+    // 让 PreviewImageLoader 的 LRU 成为唯一的内存上限。
+    public ImageSource? Thumbnail => PreviewPath is null
+        ? null
+        : PreviewImageLoader.Load(PreviewPath, ThumbnailDecodeDimension);
+
     public Visibility PreviewPlaceholderVisibility => Thumbnail is null ? Visibility.Visible : Visibility.Collapsed;
     public string ToggleText => Manifest.Enabled ? "禁用 Mod" : "启用 Mod";
     public string StatusText { get; }
@@ -380,20 +558,18 @@ public sealed class ModCardViewModel
         PreviewPath = string.IsNullOrWhiteSpace(manifest.PreviewFile)
             ? null
             : Path.Combine(directoryPath, manifest.PreviewFile);
-        Thumbnail = PreviewPath is not null ? PreviewImageLoader.Load(PreviewPath, 480) : null;
         RuntimeMessage = runtimeState?.Message ?? string.Empty;
 
         var pending = runtimeState?.Application is ModStateApplication.Pending or ModStateApplication.Failed;
         StatusText = missingDependencies.Count > 0
             ? "缺依赖"
             : pending ? "待应用" : manifest.Enabled ? "已启用" : "已禁用";
-        StatusBrush = new SolidColorBrush((Color)ColorConverter.ConvertFromString(
-            missingDependencies.Count > 0 || pending ? "#FFF2B45B" : manifest.Enabled ? "#FF58E6B2" : "#FF334255"));
+        StatusBrush = missingDependencies.Count > 0 || pending
+            ? ThemeBrushes.Warning
+            : manifest.Enabled ? ThemeBrushes.Success : ThemeBrushes.Border;
         StatusForeground = missingDependencies.Count > 0 || pending
-            ? new SolidColorBrush(Color.FromRgb(11, 15, 22))
-            : manifest.Enabled
-                ? new SolidColorBrush(Color.FromRgb(7, 19, 15))
-                : new SolidColorBrush(Color.FromRgb(167, 179, 194));
+            ? ThemeBrushes.WarningForeground
+            : manifest.Enabled ? ThemeBrushes.SuccessForeground : ThemeBrushes.SecondaryText;
         CapabilityText = manifest.LiveSwitchCapability switch
         {
             LiveSwitchCapability.Immediate => $"实时切换 · {liveSwitch.GetDisplayBinding(manifest, true)}",
@@ -405,8 +581,8 @@ public sealed class ModCardViewModel
             _ => "需要安全重载"
         };
         CapabilityBrush = manifest.LiveSwitchCapability == LiveSwitchCapability.Immediate
-            ? new SolidColorBrush(Color.FromRgb(88, 230, 178))
-            : new SolidColorBrush(Color.FromRgb(242, 180, 91));
+            ? ThemeBrushes.Success
+            : ThemeBrushes.Warning;
     }
 
     public bool MatchesSearch(string search) => string.IsNullOrWhiteSpace(search)
@@ -438,22 +614,26 @@ public sealed record ModGroupViewModel(string DisplayName, IReadOnlyList<ModCard
 public sealed record CharacterFilterItem(string Key, string DisplayName, int Enabled, int Total, bool Selected)
 {
     public string CountText => $"{Enabled}/{Total}";
-    public Brush Background => Selected
-        ? new SolidColorBrush(Color.FromRgb(28, 58, 55))
-        : Brushes.Transparent;
-    public Brush BorderBrush => Selected
-        ? new SolidColorBrush(Color.FromRgb(88, 230, 178))
-        : new SolidColorBrush(Color.FromRgb(51, 66, 85));
+    public Brush Background => Selected ? ThemeBrushes.AccentTint : Brushes.Transparent;
+    public Brush BorderBrush => Selected ? ThemeBrushes.Accent : ThemeBrushes.Border;
+    public Brush Foreground => Selected ? ThemeBrushes.Text : ThemeBrushes.SecondaryText;
+    public FontWeight LabelWeight => Selected ? FontWeights.SemiBold : FontWeights.Normal;
 }
 
 public static class PreviewImageLoader
 {
     private const int MaximumSourceDimension = 65_535;
     private const long MaximumSourcePixels = 200_000_000;
-    private const int MaximumCacheEntries = 64;
+
+    // 网格虚拟化后同一路径会被反复请求，缓存条数上限抬高以覆盖一屏加上前后各一页的卡片；
+    // 灯箱与设置页会放进 1800/2200 的大图，所以再加一道像素预算，
+    // 避免"条数没超但内存已经很大"的情况。
+    private const int MaximumCacheEntries = 128;
+    private const long MaximumCachePixels = 24_000_000;
     private static readonly object CacheSync = new();
     private static readonly Dictionary<string, CacheEntry> Cache = new(StringComparer.OrdinalIgnoreCase);
     private static long _accessSequence;
+    private static long _cachedPixels;
 
     public static BitmapSource? Load(string path, int maximumDecodeDimension)
     {
@@ -531,17 +711,27 @@ public static class PreviewImageLoader
             var prefix = fullPath + '\0';
             foreach (var staleKey in Cache.Keys.Where(item => item.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)).ToList())
             {
-                Cache.Remove(staleKey);
+                Evict(staleKey);
             }
 
             Cache[key] = new CacheEntry(image, ++_accessSequence);
-            while (Cache.Count > MaximumCacheEntries)
+            _cachedPixels += PixelCountOf(image);
+            while (Cache.Count > MaximumCacheEntries || (_cachedPixels > MaximumCachePixels && Cache.Count > 1))
             {
-                var oldest = Cache.MinBy(item => item.Value.LastAccess).Key;
-                Cache.Remove(oldest);
+                Evict(Cache.MinBy(item => item.Value.LastAccess).Key);
             }
         }
     }
+
+    private static void Evict(string key)
+    {
+        if (Cache.Remove(key, out var removed))
+        {
+            _cachedPixels -= PixelCountOf(removed.Image);
+        }
+    }
+
+    private static long PixelCountOf(BitmapSource image) => (long)image.PixelWidth * image.PixelHeight;
 
     private sealed class CacheEntry(BitmapSource image, long lastAccess)
     {

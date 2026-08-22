@@ -8,6 +8,7 @@ using Microsoft.Win32;
 using ZZZModManager.Infrastructure;
 using ZZZModManager.Models;
 using ZZZModManager.Services;
+using ZZZModManager.Themes;
 
 namespace ZZZModManager;
 
@@ -421,7 +422,12 @@ public sealed class LogRow
     public string TimeText => Entry.Timestamp.ToString("HH:mm:ss");
     public string LevelText => Entry.Level switch { AppLogLevel.Error => "错误", AppLogLevel.Warning => "警告", _ => "信息" };
     public string Message => Entry.Message;
-    public Brush LevelBrush => Entry.Level switch { AppLogLevel.Error => Brushes.LightSalmon, AppLogLevel.Warning => Brushes.Khaki, _ => Brushes.LightGreen };
+    public Brush LevelBrush => Entry.Level switch
+    {
+        AppLogLevel.Error => ThemeBrushes.Error,
+        AppLogLevel.Warning => ThemeBrushes.Warning,
+        _ => ThemeBrushes.SecondaryText
+    };
 
     public LogRow(LogEntry entry) => Entry = entry;
 }

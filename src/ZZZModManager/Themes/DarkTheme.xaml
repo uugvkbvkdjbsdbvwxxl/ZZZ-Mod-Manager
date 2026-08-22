@@ -1,28 +1,38 @@
 <ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
                     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
-    <!-- Night-shift control deck tokens: opaque surfaces, quiet contrast, one mint action. -->
-    <Color x:Key="CanvasColor">#FF0B0F16</Color>
-    <Color x:Key="SidebarColor">#FF101620</Color>
-    <Color x:Key="SurfaceColor">#FF171E29</Color>
-    <Color x:Key="SurfaceRaisedColor">#FF1D2633</Color>
-    <Color x:Key="SurfaceHoverColor">#FF263344</Color>
-    <Color x:Key="BorderColor">#FF334255</Color>
-    <Color x:Key="BorderStrongColor">#FF46586D</Color>
-    <Color x:Key="TextColor">#FFF4F7FB</Color>
-    <Color x:Key="SecondaryTextColor">#FFA7B3C2</Color>
-    <Color x:Key="MutedTextColor">#FF7F8EA2</Color>
-    <Color x:Key="AccentColor">#FF58E6B2</Color>
-    <Color x:Key="AccentStrongColor">#FF2ECB91</Color>
-    <Color x:Key="AccentForegroundColor">#FF07130F</Color>
-    <Color x:Key="WarningColor">#FFF2B45B</Color>
-    <Color x:Key="ErrorColor">#FFFF6B78</Color>
-    <Color x:Key="InfoColor">#FF72B7FF</Color>
+    <!-- Ops console tokens: neutral ink surfaces, one iris command accent, green reserved for "enabled". -->
+    <Color x:Key="CanvasColor">#FF0C0D12</Color>
+    <Color x:Key="SidebarColor">#FF11131A</Color>
+    <Color x:Key="SurfaceColor">#FF171922</Color>
+    <Color x:Key="SurfaceRaisedColor">#FF1E212B</Color>
+    <Color x:Key="SurfaceHoverColor">#FF282C38</Color>
+    <Color x:Key="SurfaceSunkenColor">#FF11131A</Color>
+    <Color x:Key="BorderColor">#FF2F3441</Color>
+    <Color x:Key="BorderStrongColor">#FF464D5E</Color>
+    <Color x:Key="TextColor">#FFF3F5F9</Color>
+    <Color x:Key="SecondaryTextColor">#FFACB4C4</Color>
+    <Color x:Key="MutedTextColor">#FF7E8798</Color>
+    <Color x:Key="AccentColor">#FF8C7CFF</Color>
+    <Color x:Key="AccentStrongColor">#FF6F5CF5</Color>
+    <Color x:Key="AccentForegroundColor">#FF0B0A18</Color>
+    <Color x:Key="AccentTintColor">#FF23204A</Color>
+    <Color x:Key="SuccessColor">#FF3FCF8E</Color>
+    <Color x:Key="SuccessForegroundColor">#FF04170F</Color>
+    <Color x:Key="WarningColor">#FFE8A33D</Color>
+    <Color x:Key="WarningForegroundColor">#FF1A1206</Color>
+    <Color x:Key="ErrorColor">#FFF2596F</Color>
+    <Color x:Key="ErrorSurfaceColor">#FF241820</Color>
+    <Color x:Key="ErrorBorderColor">#FF6A3446</Color>
+    <Color x:Key="ErrorHoverColor">#FF3A2030</Color>
+    <Color x:Key="ErrorPressedColor">#FF4A2538</Color>
+    <Color x:Key="InfoColor">#FF5AA9FF</Color>
 
     <SolidColorBrush x:Key="CanvasBrush" Color="{StaticResource CanvasColor}" />
     <SolidColorBrush x:Key="SidebarBrush" Color="{StaticResource SidebarColor}" />
     <SolidColorBrush x:Key="SurfaceBrush" Color="{StaticResource SurfaceColor}" />
     <SolidColorBrush x:Key="SurfaceRaisedBrush" Color="{StaticResource SurfaceRaisedColor}" />
     <SolidColorBrush x:Key="SurfaceHoverBrush" Color="{StaticResource SurfaceHoverColor}" />
+    <SolidColorBrush x:Key="SurfaceSunkenBrush" Color="{StaticResource SurfaceSunkenColor}" />
     <SolidColorBrush x:Key="BorderBrush" Color="{StaticResource BorderColor}" />
     <SolidColorBrush x:Key="StrongBorderBrush" Color="{StaticResource BorderStrongColor}" />
     <SolidColorBrush x:Key="TextBrush" Color="{StaticResource TextColor}" />
@@ -31,9 +41,24 @@
     <SolidColorBrush x:Key="AccentBrush" Color="{StaticResource AccentColor}" />
     <SolidColorBrush x:Key="AccentStrongBrush" Color="{StaticResource AccentStrongColor}" />
     <SolidColorBrush x:Key="AccentForegroundBrush" Color="{StaticResource AccentForegroundColor}" />
+    <SolidColorBrush x:Key="AccentTintBrush" Color="{StaticResource AccentTintColor}" />
+    <SolidColorBrush x:Key="SuccessBrush" Color="{StaticResource SuccessColor}" />
+    <SolidColorBrush x:Key="SuccessForegroundBrush" Color="{StaticResource SuccessForegroundColor}" />
     <SolidColorBrush x:Key="WarningBrush" Color="{StaticResource WarningColor}" />
+    <SolidColorBrush x:Key="WarningForegroundBrush" Color="{StaticResource WarningForegroundColor}" />
     <SolidColorBrush x:Key="ErrorBrush" Color="{StaticResource ErrorColor}" />
+    <SolidColorBrush x:Key="ErrorSurfaceBrush" Color="{StaticResource ErrorSurfaceColor}" />
+    <SolidColorBrush x:Key="ErrorBorderBrush" Color="{StaticResource ErrorBorderColor}" />
+    <SolidColorBrush x:Key="ErrorHoverBrush" Color="{StaticResource ErrorHoverColor}" />
+    <SolidColorBrush x:Key="ErrorPressedBrush" Color="{StaticResource ErrorPressedColor}" />
     <SolidColorBrush x:Key="InfoBrush" Color="{StaticResource InfoColor}" />
+
+    <!-- Shape and metric tokens: one place to tune the whole control geometry. -->
+    <CornerRadius x:Key="ControlRadius">6</CornerRadius>
+    <CornerRadius x:Key="PanelRadius">12</CornerRadius>
+    <CornerRadius x:Key="PillRadius">999</CornerRadius>
+    <Thickness x:Key="PanelPadding">16</Thickness>
+    <Thickness x:Key="ToolbarPadding">12,10</Thickness>
 
     <!-- Keep native ComboBox popups and selection chrome on the same dark palette. -->
     <SolidColorBrush x:Key="{x:Static SystemColors.WindowBrushKey}" Color="{StaticResource SurfaceRaisedColor}" />
@@ -41,13 +66,13 @@
     <SolidColorBrush x:Key="{x:Static SystemColors.ControlBrushKey}" Color="{StaticResource SurfaceColor}" />
     <SolidColorBrush x:Key="{x:Static SystemColors.ControlTextBrushKey}" Color="{StaticResource TextColor}" />
 
-    <!-- Dialogs intentionally use the same opaque surfaces as the main shell. -->
-    <SolidColorBrush x:Key="DialogBackgroundBrush" Color="#FF0B0F16" />
-    <SolidColorBrush x:Key="DialogSurfaceBrush" Color="#FF171E29" />
-    <SolidColorBrush x:Key="DialogRaisedBrush" Color="#FF1D2633" />
-    <SolidColorBrush x:Key="DialogBorderBrush" Color="#FF46586D" />
-    <SolidColorBrush x:Key="DialogTextBrush" Color="#FFF4F7FB" />
-    <SolidColorBrush x:Key="DialogMutedTextBrush" Color="#FFA7B3C2" />
+    <!-- Dialogs intentionally reuse the shell tokens instead of re-declaring hex values. -->
+    <SolidColorBrush x:Key="DialogBackgroundBrush" Color="{StaticResource CanvasColor}" />
+    <SolidColorBrush x:Key="DialogSurfaceBrush" Color="{StaticResource SurfaceColor}" />
+    <SolidColorBrush x:Key="DialogRaisedBrush" Color="{StaticResource SurfaceRaisedColor}" />
+    <SolidColorBrush x:Key="DialogBorderBrush" Color="{StaticResource BorderStrongColor}" />
+    <SolidColorBrush x:Key="DialogTextBrush" Color="{StaticResource TextColor}" />
+    <SolidColorBrush x:Key="DialogMutedTextBrush" Color="{StaticResource SecondaryTextColor}" />
 
     <Style TargetType="{x:Type Window}">
         <Setter Property="Background" Value="{StaticResource CanvasBrush}" />
@@ -68,7 +93,7 @@
                 Background="{TemplateBinding Background}"
                 BorderBrush="{TemplateBinding BorderBrush}"
                 BorderThickness="{TemplateBinding BorderThickness}"
-                CornerRadius="8"
+                CornerRadius="{StaticResource ControlRadius}"
                 Padding="{TemplateBinding Padding}">
             <ContentPresenter HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
                               VerticalAlignment="{TemplateBinding VerticalContentAlignment}"
@@ -98,7 +123,7 @@
                 Background="{TemplateBinding Background}"
                 BorderBrush="{TemplateBinding BorderBrush}"
                 BorderThickness="{TemplateBinding BorderThickness}"
-                CornerRadius="8"
+                CornerRadius="{StaticResource ControlRadius}"
                 Padding="{TemplateBinding Padding}">
             <ContentPresenter HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
                               VerticalAlignment="{TemplateBinding VerticalContentAlignment}"
@@ -151,7 +176,7 @@
                 Background="{TemplateBinding Background}"
                 BorderBrush="{TemplateBinding BorderBrush}"
                 BorderThickness="{TemplateBinding BorderThickness}"
-                CornerRadius="8"
+                CornerRadius="{StaticResource ControlRadius}"
                 Padding="{TemplateBinding Padding}">
             <ContentPresenter HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
                               VerticalAlignment="{TemplateBinding VerticalContentAlignment}"
@@ -159,11 +184,11 @@
         </Border>
         <ControlTemplate.Triggers>
             <Trigger Property="IsMouseOver" Value="True">
-                <Setter TargetName="DangerChrome" Property="Background" Value="#FF3A2229" />
+                <Setter TargetName="DangerChrome" Property="Background" Value="{StaticResource ErrorHoverBrush}" />
                 <Setter TargetName="DangerChrome" Property="BorderBrush" Value="{StaticResource ErrorBrush}" />
             </Trigger>
             <Trigger Property="IsPressed" Value="True">
-                <Setter TargetName="DangerChrome" Property="Background" Value="#FF4A2430" />
+                <Setter TargetName="DangerChrome" Property="Background" Value="{StaticResource ErrorPressedBrush}" />
                 <Setter TargetName="DangerChrome" Property="BorderBrush" Value="{StaticResource ErrorBrush}" />
                 <Setter TargetName="DangerChrome" Property="Opacity" Value="0.86" />
             </Trigger>
@@ -179,17 +204,28 @@
 
     <Style x:Key="DangerButton" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
         <Setter Property="Foreground" Value="{StaticResource ErrorBrush}" />
-        <Setter Property="BorderBrush" Value="#FF6B3E4C" />
-        <Setter Property="Background" Value="#FF211923" />
+        <Setter Property="BorderBrush" Value="{StaticResource ErrorBorderBrush}" />
+        <Setter Property="Background" Value="{StaticResource ErrorSurfaceBrush}" />
         <Setter Property="Template" Value="{StaticResource DangerButtonTemplate}" />
     </Style>
 
     <Style x:Key="UtilityButton" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
-        <Setter Property="FontSize" Value="11" />
-        <Setter Property="Padding" Value="7,5" />
-        <Setter Property="MinHeight" Value="30" />
-        <Setter Property="Foreground" Value="{StaticResource MutedTextBrush}" />
+        <Setter Property="FontSize" Value="12" />
+        <Setter Property="Padding" Value="10,6" />
+        <Setter Property="MinHeight" Value="34" />
+        <Setter Property="Foreground" Value="{StaticResource SecondaryTextBrush}" />
+        <Setter Property="Background" Value="{StaticResource SurfaceSunkenBrush}" />
         <Setter Property="Margin" Value="2" />
+    </Style>
+
+    <!-- Quiet inline affordance: no fill until hover, so it never competes with a primary action. -->
+    <Style x:Key="GhostButton" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
+        <Setter Property="Background" Value="Transparent" />
+        <Setter Property="BorderBrush" Value="{StaticResource BorderBrush}" />
+        <Setter Property="Foreground" Value="{StaticResource SecondaryTextBrush}" />
+        <Setter Property="FontSize" Value="12" />
+        <Setter Property="Padding" Value="10,6" />
+        <Setter Property="MinHeight" Value="34" />
     </Style>
 
     <ControlTemplate x:Key="NavButtonTemplate" TargetType="{x:Type RadioButton}">
@@ -197,11 +233,21 @@
                 Background="{TemplateBinding Background}"
                 BorderBrush="{TemplateBinding BorderBrush}"
                 BorderThickness="{TemplateBinding BorderThickness}"
-                CornerRadius="8"
+                CornerRadius="{StaticResource ControlRadius}"
                 Padding="{TemplateBinding Padding}">
-            <ContentPresenter HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
-                              VerticalAlignment="{TemplateBinding VerticalContentAlignment}"
-                              RecognizesAccessKey="True" />
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+                <!-- Selection is carried by an explicit marker, not by color alone. -->
+                <Rectangle x:Name="NavMarker" Grid.Column="0" Width="3" Height="18" RadiusX="1.5" RadiusY="1.5"
+                           Margin="0,0,9,0" Fill="Transparent" VerticalAlignment="Center" />
+                <ContentPresenter Grid.Column="1"
+                                  HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
+                                  VerticalAlignment="{TemplateBinding VerticalContentAlignment}"
+                                  RecognizesAccessKey="True" />
+            </Grid>
         </Border>
         <ControlTemplate.Triggers>
             <Trigger Property="IsMouseOver" Value="True">
@@ -209,13 +255,15 @@
                 <Setter TargetName="NavChrome" Property="BorderBrush" Value="{StaticResource StrongBorderBrush}" />
             </Trigger>
             <Trigger Property="IsChecked" Value="True">
-                <Setter TargetName="NavChrome" Property="Background" Value="#FF1C3A37" />
+                <Setter TargetName="NavChrome" Property="Background" Value="{StaticResource AccentTintBrush}" />
                 <Setter TargetName="NavChrome" Property="BorderBrush" Value="{StaticResource AccentBrush}" />
-                <Setter TargetName="NavChrome" Property="BorderThickness" Value="3,0,0,0" />
-                <Setter Property="Foreground" Value="{StaticResource AccentBrush}" />
+                <Setter TargetName="NavMarker" Property="Fill" Value="{StaticResource AccentBrush}" />
+                <Setter Property="Foreground" Value="{StaticResource TextBrush}" />
+                <Setter Property="FontWeight" Value="SemiBold" />
             </Trigger>
             <Trigger Property="IsKeyboardFocusWithin" Value="True">
                 <Setter TargetName="NavChrome" Property="BorderBrush" Value="{StaticResource AccentBrush}" />
+                <Setter TargetName="NavChrome" Property="BorderThickness" Value="1" />
             </Trigger>
             <Trigger Property="IsEnabled" Value="False">
                 <Setter TargetName="NavChrome" Property="Opacity" Value="0.42" />
@@ -227,10 +275,10 @@
         <Setter Property="Foreground" Value="{StaticResource SecondaryTextBrush}" />
         <Setter Property="Background" Value="Transparent" />
         <Setter Property="BorderBrush" Value="Transparent" />
-        <Setter Property="BorderThickness" Value="3,0,0,0" />
-        <Setter Property="Padding" Value="12,9" />
-        <Setter Property="Margin" Value="2,3" />
-        <Setter Property="MinHeight" Value="40" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="Padding" Value="10,9" />
+        <Setter Property="Margin" Value="0,2" />
+        <Setter Property="MinHeight" Value="38" />
         <Setter Property="HorizontalContentAlignment" Value="Left" />
         <Setter Property="VerticalContentAlignment" Value="Center" />
         <Setter Property="Cursor" Value="Hand" />
@@ -243,7 +291,7 @@
                 Background="{TemplateBinding Background}"
                 BorderBrush="{TemplateBinding BorderBrush}"
                 BorderThickness="{TemplateBinding BorderThickness}"
-                CornerRadius="8"
+                CornerRadius="{StaticResource ControlRadius}"
                 Padding="{TemplateBinding Padding}">
             <ScrollViewer x:Name="PART_ContentHost" />
         </Border>
@@ -260,7 +308,7 @@
 
     <Style TargetType="{x:Type TextBox}">
         <Setter Property="Foreground" Value="{StaticResource TextBrush}" />
-        <Setter Property="Background" Value="{StaticResource SurfaceRaisedBrush}" />
+        <Setter Property="Background" Value="{StaticResource SurfaceSunkenBrush}" />
         <Setter Property="BorderBrush" Value="{StaticResource BorderBrush}" />
         <Setter Property="BorderThickness" Value="1" />
         <Setter Property="CaretBrush" Value="{StaticResource AccentBrush}" />
@@ -275,7 +323,7 @@
                 Background="{TemplateBinding Background}"
                 BorderBrush="{TemplateBinding BorderBrush}"
                 BorderThickness="{TemplateBinding BorderThickness}"
-                CornerRadius="8"
+                CornerRadius="{StaticResource ControlRadius}"
                 Padding="{TemplateBinding Padding}">
             <Grid>
                 <ContentPresenter Margin="0,0,20,0"
@@ -328,6 +376,7 @@
                         Background="{StaticResource SurfaceRaisedBrush}"
                         BorderBrush="{StaticResource StrongBorderBrush}"
                         BorderThickness="1"
+                        CornerRadius="{StaticResource ControlRadius}"
                         MinWidth="{Binding ActualWidth, RelativeSource={RelativeSource TemplatedParent}}">
                     <ScrollViewer Margin="3" SnapsToDevicePixels="True"
                                   CanContentScroll="True" VerticalScrollBarVisibility="Auto"
@@ -387,7 +436,7 @@
                             <Setter TargetName="ComboItemChrome" Property="Background" Value="{StaticResource SurfaceHoverBrush}" />
                         </Trigger>
                         <Trigger Property="IsSelected" Value="True">
-                            <Setter TargetName="ComboItemChrome" Property="Background" Value="#FF1C3A37" />
+                            <Setter TargetName="ComboItemChrome" Property="Background" Value="{StaticResource AccentTintBrush}" />
                             <Setter TargetName="ComboItemChrome" Property="BorderBrush" Value="{StaticResource AccentBrush}" />
                             <Setter Property="Foreground" Value="{StaticResource AccentBrush}" />
                         </Trigger>
@@ -434,13 +483,13 @@
         <Setter Property="Background" Value="{StaticResource SurfaceBrush}" />
         <Setter Property="BorderBrush" Value="{StaticResource BorderBrush}" />
         <Setter Property="BorderThickness" Value="1" />
-        <Setter Property="CornerRadius" Value="10" />
-        <Setter Property="Padding" Value="16" />
+        <Setter Property="CornerRadius" Value="{StaticResource PanelRadius}" />
+        <Setter Property="Padding" Value="{StaticResource PanelPadding}" />
     </Style>
 
     <Style x:Key="CardBorder" TargetType="Border" BasedOn="{StaticResource PanelBorder}">
         <Setter Property="Background" Value="{StaticResource SurfaceRaisedBrush}" />
-        <Setter Property="CornerRadius" Value="10" />
+        <Setter Property="CornerRadius" Value="{StaticResource PanelRadius}" />
         <Setter Property="Padding" Value="0" />
         <Setter Property="Margin" Value="6" />
     </Style>
@@ -451,10 +500,84 @@
         <Setter Property="Padding" Value="0" />
     </Style>
 
+    <!-- Overflow menus carry the secondary card actions, so they must read as part of
+         the surface stack rather than as native Windows chrome. -->
+    <Style TargetType="{x:Type ContextMenu}">
+        <Setter Property="Foreground" Value="{StaticResource TextBrush}" />
+        <Setter Property="Background" Value="{StaticResource SurfaceRaisedBrush}" />
+        <Setter Property="BorderBrush" Value="{StaticResource StrongBorderBrush}" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="Padding" Value="0" />
+        <Setter Property="HasDropShadow" Value="False" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="{x:Type ContextMenu}">
+                    <Border Background="{TemplateBinding Background}"
+                            BorderBrush="{TemplateBinding BorderBrush}"
+                            BorderThickness="{TemplateBinding BorderThickness}"
+                            CornerRadius="{StaticResource ControlRadius}"
+                            Padding="5">
+                        <StackPanel IsItemsHost="True" KeyboardNavigation.DirectionalNavigation="Cycle" />
+                    </Border>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <Style TargetType="{x:Type MenuItem}">
+        <Setter Property="Foreground" Value="{StaticResource TextBrush}" />
+        <Setter Property="Background" Value="Transparent" />
+        <Setter Property="MinHeight" Value="34" />
+        <Setter Property="Cursor" Value="Hand" />
+        <Setter Property="FocusVisualStyle" Value="{x:Null}" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="{x:Type MenuItem}">
+                    <Border x:Name="MenuItemChrome" Background="{TemplateBinding Background}"
+                            BorderBrush="Transparent" BorderThickness="1"
+                            CornerRadius="{StaticResource ControlRadius}"
+                            Padding="11,7" MinWidth="152">
+                        <ContentPresenter ContentSource="Header" VerticalAlignment="Center"
+                                          RecognizesAccessKey="True" />
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsHighlighted" Value="True">
+                            <Setter TargetName="MenuItemChrome" Property="Background" Value="{StaticResource SurfaceHoverBrush}" />
+                        </Trigger>
+                        <Trigger Property="IsKeyboardFocused" Value="True">
+                            <Setter TargetName="MenuItemChrome" Property="BorderBrush" Value="{StaticResource AccentBrush}" />
+                        </Trigger>
+                        <Trigger Property="IsEnabled" Value="False">
+                            <Setter TargetName="MenuItemChrome" Property="Opacity" Value="0.42" />
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <!-- Destructive entries stay in the menu but never share the neutral text color. -->
+    <Style x:Key="DangerMenuItem" TargetType="MenuItem" BasedOn="{StaticResource {x:Type MenuItem}}">
+        <Setter Property="Foreground" Value="{StaticResource ErrorBrush}" />
+    </Style>
+
+    <Style TargetType="{x:Type Separator}">
+        <Setter Property="Height" Value="1" />
+        <Setter Property="Margin" Value="5,5,5,5" />
+        <Setter Property="Background" Value="{StaticResource BorderBrush}" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="{x:Type Separator}">
+                    <Rectangle Height="1" Fill="{TemplateBinding Background}" />
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
     <!-- Keep the orientation-specific dimensions: the native track/thumb remains draggable. -->
     <Style TargetType="{x:Type ScrollBar}">
-        <Setter Property="Background" Value="#FF1D2633" />
-        <Setter Property="Foreground" Value="#FF6E829A" />
+        <Setter Property="Background" Value="{StaticResource SurfaceSunkenBrush}" />
+        <Setter Property="Foreground" Value="{StaticResource MutedTextBrush}" />
         <Style.Triggers>
             <Trigger Property="Orientation" Value="Vertical">
                 <Setter Property="Width" Value="10" />

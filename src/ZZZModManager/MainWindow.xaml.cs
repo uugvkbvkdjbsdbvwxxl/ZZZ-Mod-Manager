@@ -11,6 +11,7 @@ using System.Windows.Threading;
 using ZZZModManager.Infrastructure;
 using ZZZModManager.Models;
 using ZZZModManager.Services;
+using ZZZModManager.Themes;
 
 namespace ZZZModManager;
 
@@ -74,6 +75,7 @@ public partial class MainWindow : Window
     private bool _gameProcessProbeInProgress;
     private bool _gameProcessProbeCompleted;
     private string _selectedCharacterKey = "all";
+    private bool _characterFiltersExpanded;
     private int? _lastObservedGameProcessId;
     private bool _splitPackageRepairDeferred;
     private bool _splitPackageRepairInProgress;
@@ -314,12 +316,12 @@ public partial class MainWindow : Window
         RuntimeStatusText.Text = runtime?.Message ?? "正在后台校验运行核心…";
         SettingsRuntimeStatusText.Text = RuntimeStatusText.Text;
         RuntimeStatusText.Foreground = runtime is null
-            ? (Brush)FindResource("MutedTextBrush")
-            : runtime.IsValid ? Brushes.LightGreen : Brushes.Salmon;
+            ? ThemeBrushes.MutedText
+            : runtime.IsValid ? ThemeBrushes.Success : ThemeBrushes.Error;
         SettingsRuntimeStatusText.Foreground = RuntimeStatusText.Foreground;
         GameStatusText.Text = gameRunning ? "游戏运行中" : "游戏未运行";
-        GameStatusText.Foreground = gameRunning ? Brushes.LightGreen : (Brush)FindResource("MutedTextBrush");
-        GameStatusDot.Fill = gameRunning ? Brushes.MediumSpringGreen : Brushes.SlateGray;
+        GameStatusText.Foreground = gameRunning ? ThemeBrushes.Success : ThemeBrushes.MutedText;
+        GameStatusDot.Fill = gameRunning ? ThemeBrushes.Success : ThemeBrushes.MutedText;
         HeroTitle.Text = gameRunning
             ? "绝区零正在运行"
             : runtime is null ? "正在校验运行核心" : runtime.IsValid ? "准备启动绝区零" : "需要修复运行核心";
@@ -563,8 +565,8 @@ public partial class MainWindow : Window
     private void ShowToast(string message, bool isError = false)
     {
         ToastText.Text = message;
-        ToastText.Foreground = isError ? Brushes.LightSalmon : Brushes.White;
-        ToastBorder.BorderBrush = isError ? Brushes.IndianRed : (Brush)FindResource("AccentBrush");
+        ToastText.Foreground = isError ? ThemeBrushes.Error : ThemeBrushes.Text;
+        ToastBorder.BorderBrush = isError ? ThemeBrushes.Error : ThemeBrushes.Accent;
         ToastBorder.Visibility = Visibility.Visible;
         _toastTimer.Stop();
         _toastTimer.Start();
@@ -816,6 +818,37 @@ public partial class MainWindow : Window
         {
             CloseLightbox();
             e.Handled = true;
+            return;
+        }
+
+        if (LightboxOverlay.Visibility == Visibility.Visible
+            || HomePage.Visibility != Visibility.Visible
+            || Keyboard.Modifiers != ModifierKeys.None)
+        {
+            return;
+        }
+
+        // 搜索框和下拉框自己要用方向键与回车，所以只有焦点已经落在卡片区时才接管。
+        if (Keyboard.FocusedElement is DependencyObject focused
+            && !ModGroupsItemsControl.IsKeyboardFocusWithin
+            && focused is not MainWindow)
+        {
+            return;
+        }
+
+        switch (e.Key)
+        {
+            case Key.Left or Key.Right or Key.Up or Key.Down:
+                e.Handled = MoveCardFocus(e.Key);
+                break;
+            case Key.Enter when ModGroupsItemsControl.IsKeyboardFocusWithin:
+                if (Keyboard.FocusedElement is Button toggle && toggle.Name == "CardToggleButton")
+                {
+                    ToggleMod_Click(toggle, new RoutedEventArgs());
+                    e.Handled = true;
+                }
+
+                break;
         }
     }
 
