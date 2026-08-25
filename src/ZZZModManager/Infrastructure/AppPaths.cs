@@ -2,8 +2,6 @@ namespace ZZZModManager.Infrastructure;
 
 public sealed class AppPaths
 {
-    private const string PreferredRoot = @"D:\ZZZMod";
-
     public string Root { get; }
     public string ModsRoot => Path.Combine(Root, "Mods");
     public string StagingRoot => Path.Combine(Root, "Staging");
@@ -23,9 +21,11 @@ public sealed class AppPaths
 
     private static string ResolveDefaultRoot()
     {
-        // This installation is intentionally self-contained on D:. Do not silently
-        // recreate configuration, logs or runtime files under LocalAppData.
-        return PreferredRoot;
+        // The root is user-configurable through an external pointer, because
+        // config.json lives inside the root itself. Everything else stays
+        // self-contained under it: do not silently recreate configuration, logs
+        // or runtime files under LocalAppData.
+        return ModRootPointer.Resolve();
     }
 
     public void Ensure()

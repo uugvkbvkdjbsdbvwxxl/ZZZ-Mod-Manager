@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text.Json.Serialization;
 
 namespace ZZZModManager.Models;
@@ -54,7 +55,11 @@ public enum AppLogLevel
 
 public sealed record LogEntry(DateTimeOffset Timestamp, AppLogLevel Level, string Message)
 {
-    public override string ToString() => $"[{Timestamp:HH:mm:ss}] [{Level}] {Message}";
+    // The date is part of the persisted format so that entries reloaded on a later
+    // day keep the moment they were actually written.
+    public const string TimestampFormat = "yyyy-MM-dd HH:mm:ss";
+
+    public override string ToString() => $"[{Timestamp.ToString(TimestampFormat, CultureInfo.InvariantCulture)}] [{Level}] {Message}";
 }
 
 public sealed class ValidationIssue

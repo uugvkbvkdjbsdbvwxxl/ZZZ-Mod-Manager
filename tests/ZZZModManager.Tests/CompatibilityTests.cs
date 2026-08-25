@@ -190,6 +190,57 @@ endif
     }
 
     [Fact]
+    public void OverlapDetectionReportsBothDirectionsAndIgnoresEnabledState()
+    {
+        var first = new ModManifest
+        {
+            Id = "first",
+            DisplayName = "First",
+            Enabled = false,
+            Hashes = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "AABBCCDD", "11223344" }
+        };
+        var second = new ModManifest
+        {
+            Id = "second",
+            DisplayName = "Second",
+            Enabled = false,
+            Hashes = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "aabbccdd" }
+        };
+        var unrelated = new ModManifest
+        {
+            Id = "third",
+            DisplayName = "Third",
+            Hashes = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "deadbeef" }
+        };
+
+        var overlaps = new ConflictDetector().FindOverlaps([first, second, unrelated]);
+
+        Assert.Equal(2, overlaps.Count);
+        Assert.Equal("Second", Assert.Single(overlaps.Single(item => item.Mod.Id == "first").Conflicts).DisplayName);
+        Assert.Equal("First", Assert.Single(overlaps.Single(item => item.Mod.Id == "second").Conflicts).DisplayName);
+        Assert.DoesNotContain(overlaps, item => item.Mod.Id == "third");
+    }
+
+    [Fact]
+    public async Task LibraryOverlapMapSurfacesConflictPeersForTheCardView()
+    {
+        var importer = new ModImporter(_paths);
+        var first = await importer.StageAsync(CreateMod("First"));
+        var second = await importer.StageAsync(CreateMod("Second"));
+        var validator = new ModValidator(_paths);
+        var firstCandidate = Assert.Single(first.Candidates);
+        var secondCandidate = Assert.Single(second.Candidates);
+        var library = new ModLibrary(_paths, new JsonFileStore(), new ConflictDetector());
+        var firstManifest = library.Install(firstCandidate, validator.ValidateAndRepair(firstCandidate));
+        var secondManifest = library.Install(secondCandidate, validator.ValidateAndRepair(secondCandidate));
+
+        var map = library.GetOverlapMap();
+
+        Assert.Equal(secondManifest.Id, Assert.Single(map[firstManifest.Id]).Id);
+        Assert.Equal(firstManifest.Id, Assert.Single(map[secondManifest.Id]).Id);
+    }
+
+    [Fact]
     public void LibraryDetectsSameArchiveOptionalComponentsAsOneSplitPackage()
     {
         var library = new ModLibrary(_paths, new JsonFileStore(), new ConflictDetector());
@@ -721,7 +772,7 @@ filename = body.buf
     }
 
     [Fact]
-    public void DependencyResolverReportsOnlyDependenciesMissingFromEnabledLibrary()
+    public void DependencyResolverTreatsAnInstalledButDisabledProviderAsAvailable()
     {
         var rabbit = new ModManifest
         {
@@ -742,7 +793,8 @@ filename = body.buf
 
         Assert.Empty(resolver.GetMissingDependencies(velina, [rabbit, velina]));
         rabbit.Enabled = false;
-        Assert.Equal(["RabbitFX"], resolver.GetMissingDependencies(velina, [rabbit, velina]));
+        Assert.Empty(resolver.GetMissingDependencies(velina, [rabbit, velina]));
+        Assert.Equal(["RabbitFX"], resolver.GetMissingDependencies(velina, [velina]));
     }
 
     [Fact]
@@ -812,6 +864,39 @@ filename = body.buf
     }
 
     [Fact]
+    public void LoggerPersistsTheDateSoReloadedEntriesKeepTheirDay()
+    {
+        var path = Path.Combine(_paths.LogsRoot, "manager.log");
+        File.WriteAllText(path, "[2024-03-05 08:09:10] [Warning] 昨天的告警" + Environment.NewLine, Encoding.UTF8);
+
+        var logger = new AppLogger(_paths);
+
+        var entry = Assert.Single(logger.Entries);
+        Assert.Equal(new DateTime(2024, 3, 5, 8, 9, 10), entry.Timestamp.DateTime);
+        Assert.Equal(AppLogLevel.Warning, entry.Level);
+        Assert.Equal("昨天的告警", entry.Message);
+
+        logger.Info("今天的记录");
+        Assert.Contains(
+            DateTimeOffset.Now.ToString("yyyy-MM-dd"),
+            File.ReadAllLines(path, Encoding.UTF8)[^1]);
+    }
+
+    [Fact]
+    public void LoggerDatesLegacyLinesFromTheFileInsteadOfToday()
+    {
+        var path = Path.Combine(_paths.LogsRoot, "manager.log");
+        File.WriteAllText(path, "[12:34:56] [Info] 旧格式日志" + Environment.NewLine, Encoding.UTF8);
+        var written = new DateTime(2024, 1, 2, 3, 4, 5);
+        File.SetLastWriteTime(path, written);
+
+        var logger = new AppLogger(_paths);
+
+        var entry = Assert.Single(logger.Entries);
+        Assert.Equal(new DateTime(2024, 1, 2, 12, 34, 56), entry.Timestamp.DateTime);
+    }
+
+    [Fact]
     public void LoggerSupportsConcurrentBackgroundWritersAndSnapshotReaders()
     {
         var logger = new AppLogger(_paths);
@@ -842,6 +927,91 @@ filename = body.buf
         Assert.Equal(AppLogger.MaximumEntries, logger.Entries.Count);
         Assert.Equal("history 25", logger.Entries[0].Message);
         Assert.Equal(AppLogger.MaximumEntries, File.ReadAllLines(path, Encoding.UTF8).Length);
+    }
+
+    [Fact]
+    public void DiagnosticsSummarizerCountsIssuesAndPutsErrorsFirst()
+    {
+        var manifest = new ModManifest
+        {
+            Id = "Velina",
+            DisplayName = "Velina",
+            InstalledDirectory = "Velina",
+            ImportStatus = ImportStatus.ReadyWithFixes,
+            LiveSwitchCapability = LiveSwitchCapability.Immediate,
+            SourceSha256 = "0123456789abcdef0123456789abcdef"
+        };
+        var report = new ImportReport
+        {
+            Status = ImportStatus.ReadyWithFixes,
+            Issues =
+            [
+                new ValidationIssue { Severity = IssueSeverity.Warning, Code = "STALE_BUFFER", Message = "存在过期缓冲" },
+                new ValidationIssue { Severity = IssueSeverity.Error, Code = "MISSING_USED_FILE", Message = "缺少引用文件", File = "Velina.ini", Line = 42, Fixable = true }
+            ],
+            Fixes = [new AppliedFix { RuleId = "normalize-trailing-cycle-value", File = "Velina.ini", Line = 7, Before = "$cycle = 3", After = "$cycle = 2" }]
+        };
+
+        var diagnostics = ModDiagnosticsSummarizer.Build(manifest, report, new LiveGateAuditResult(true, []));
+
+        Assert.Equal("1 个错误 · 1 个警告", diagnostics.Headline);
+        Assert.Equal(IssueSeverity.Error, diagnostics.Severity);
+        var issues = diagnostics.Sections.Single(section => section.Title == "校验问题");
+        Assert.Equal(IssueSeverity.Error, issues.Lines[0].Severity);
+        Assert.Equal("缺少引用文件", issues.Lines[0].Title);
+        Assert.Equal("MISSING_USED_FILE · Velina.ini:42 · 可自动修复", issues.Lines[0].Detail);
+        Assert.Equal(IssueSeverity.Warning, issues.Lines[1].Severity);
+        var fixes = diagnostics.Sections.Single(section => section.Title == "自动修复");
+        Assert.Equal("normalize-trailing-cycle-value · Velina.ini:7", Assert.Single(fixes.Lines).Title);
+        Assert.Contains("来源校验值", diagnostics.ToPlainText());
+    }
+
+    [Fact]
+    public void DiagnosticsSummarizerExplainsAMissingReportInsteadOfLookingBroken()
+    {
+        var manifest = new ModManifest
+        {
+            Id = "Legacy",
+            DisplayName = "Legacy",
+            InstalledDirectory = "Legacy",
+            ImportStatus = ImportStatus.Ready,
+            LiveSwitchCapability = LiveSwitchCapability.Immediate
+        };
+
+        var diagnostics = ModDiagnosticsSummarizer.Build(manifest, null, new LiveGateAuditResult(true, []));
+
+        Assert.Equal("校验通过 · 未发现问题", diagnostics.Headline);
+        Assert.Equal(IssueSeverity.Info, diagnostics.Severity);
+        var issues = diagnostics.Sections.Single(section => section.Title == "校验问题");
+        Assert.Empty(issues.Lines);
+        Assert.Equal("没有找到导入报告，此 Mod 可能在报告机制之前导入。", issues.EmptyText);
+        Assert.Equal("导入时没有改写任何文件。", diagnostics.Sections.Single(section => section.Title == "自动修复").EmptyText);
+    }
+
+    [Fact]
+    public void DiagnosticsSummarizerEscalatesWhenTheLiveGateAuditFails()
+    {
+        var manifest = new ModManifest
+        {
+            Id = "Unsafe",
+            DisplayName = "Unsafe",
+            InstalledDirectory = "Unsafe",
+            ImportStatus = ImportStatus.Ready,
+            LiveSwitchCapability = LiveSwitchCapability.Unsupported,
+            LiveSwitchBlockReason = "存在无条件执行段"
+        };
+
+        var diagnostics = ModDiagnosticsSummarizer.Build(
+            manifest,
+            new ImportReport { Status = ImportStatus.Ready },
+            new LiveGateAuditResult(false, ["Velina.ini:12 存在无条件 run"]));
+
+        Assert.Equal("门控审计未通过", diagnostics.Headline);
+        Assert.Equal(IssueSeverity.Error, diagnostics.Severity);
+        var audit = diagnostics.Sections.Single(section => section.Title == "实时门控审计");
+        Assert.Equal(IssueSeverity.Error, Assert.Single(audit.Lines).Severity);
+        Assert.Equal("Velina.ini:12 存在无条件 run", audit.Lines[0].Title);
+        Assert.Contains("存在无条件执行段", diagnostics.Sections.Single(section => section.Title == "概览").Lines.Select(line => line.Detail));
     }
 
     [Fact]
@@ -971,6 +1141,47 @@ filename = body.buf
         Assert.Contains($"reload_config = {ManagerGameBindings.ReloadIniBinding}", d3dx, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("skip_early_includes_load = 0", d3dx, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("config_initialization_delay = -1", d3dx, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void ModRootPointerFallsBackToTheDefaultWhenNoPointerIsStored()
+    {
+        var pointer = Path.Combine(_root, "pointer", "mod-root.txt");
+
+        Assert.Equal(ModRootPointer.DefaultRoot, ModRootPointer.Resolve(pointer));
+
+        Directory.CreateDirectory(Path.GetDirectoryName(pointer)!);
+        File.WriteAllText(pointer, "   ");
+        Assert.Equal(ModRootPointer.DefaultRoot, ModRootPointer.Resolve(pointer));
+
+        File.WriteAllText(pointer, "Mods\\Velina");
+        Assert.Equal(ModRootPointer.DefaultRoot, ModRootPointer.Resolve(pointer));
+    }
+
+    [Fact]
+    public void ModRootPointerRoundTripsAChosenDirectoryAndCreatesIt()
+    {
+        var pointer = Path.Combine(_root, "pointer", "mod-root.txt");
+        var chosen = Path.Combine(_root, "library", "ZZZMod");
+
+        Assert.True(ModRootPointer.TrySave(pointer, chosen + Path.DirectorySeparatorChar, out var saved));
+        Assert.Equal(chosen, saved);
+        Assert.True(Directory.Exists(chosen));
+        Assert.Equal(chosen, ModRootPointer.Resolve(pointer));
+        Assert.Equal(chosen, new AppPaths(ModRootPointer.Resolve(pointer)).Root);
+    }
+
+    [Fact]
+    public void ModRootPointerRejectsBlankRelativeAndDriveRootCandidates()
+    {
+        Assert.False(ModRootPointer.TryNormalize(null, out _));
+        Assert.False(ModRootPointer.TryNormalize("   ", out _));
+        Assert.False(ModRootPointer.TryNormalize("Mods", out _));
+        Assert.False(ModRootPointer.TryNormalize(Path.GetPathRoot(_root), out _));
+
+        var pointer = Path.Combine(_root, "pointer", "mod-root.txt");
+        Assert.False(ModRootPointer.TrySave(pointer, Path.GetPathRoot(_root), out _));
+        Assert.False(File.Exists(pointer));
     }
 
     private string CreateMod(string wrapper)

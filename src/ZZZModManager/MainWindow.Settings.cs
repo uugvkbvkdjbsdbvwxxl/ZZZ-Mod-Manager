@@ -227,6 +227,61 @@ public partial class MainWindow
         return builder.ToString();
     }
 
+    private void BrowseModRoot_Click(object sender, RoutedEventArgs e)
+    {
+        var dialog = new OpenFolderDialog
+        {
+            Title = "选择 Mod 库根目录",
+            InitialDirectory = Directory.Exists(_paths.Root) ? _paths.Root : string.Empty
+        };
+        if (dialog.ShowDialog(this) != true)
+        {
+            return;
+        }
+
+        if (!ModRootPointer.TryNormalize(dialog.FolderName, out var candidate))
+        {
+            ShowToast("这个位置不能作为库根目录，请选择磁盘上的一个具体文件夹。", true);
+            return;
+        }
+
+        if (string.Equals(candidate, _paths.Root, StringComparison.OrdinalIgnoreCase))
+        {
+            ShowToast("已经是当前的 Mod 库位置。");
+            return;
+        }
+
+        if (MessageBox.Show(
+                this,
+                $"把 Mod 库切换到：\n{candidate}\n\n"
+                + "管理器不会搬运现有文件。切换后需要重启管理器，"
+                + "已装 Mod 与配置仍留在旧目录，可手动复制过去。",
+                "更换 Mod 库位置",
+                MessageBoxButton.YesNo,
+                MessageBoxImage.Warning) != MessageBoxResult.Yes)
+        {
+            return;
+        }
+
+        if (!ModRootPointer.TrySave(ModRootPointer.PointerFile, candidate, out var saved))
+        {
+            ShowToast("无法写入库位置，请确认目标目录可创建且有写入权限。", true);
+            return;
+        }
+
+        ModRootBox.Text = saved;
+        Log($"Mod 库位置已改为：{saved}（重启后生效）");
+        UpdateModRootHint(saved);
+        ShowToast("库位置已保存，重启管理器后生效。");
+    }
+
+    private void UpdateModRootHint(string pendingRoot)
+    {
+        ModRootHintText.Text = string.Equals(pendingRoot, _paths.Root, StringComparison.OrdinalIgnoreCase)
+            ? $"当前生效目录：{_paths.Root}"
+            : $"需要重启：当前仍在使用 {_paths.Root}";
+    }
+
     private void OpenMods_Click(object sender, RoutedEventArgs e) => OpenDirectory(_paths.ModsRoot);
 
     private void OpenLogs_Click(object sender, RoutedEventArgs e) => OpenDirectory(_paths.LogsRoot);
@@ -471,6 +526,14 @@ public partial class MainWindow
         }
     }
 
+    private void LogLevelFilter_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (_logger is not null)
+        {
+            RefreshLogs();
+        }
+    }
+
     private void RefreshLogs_Click(object sender, RoutedEventArgs e)
     {
         _logger.Reload();
@@ -496,17 +559,25 @@ public partial class MainWindow
     private void RefreshLogs()
     {
         var filter = LogSearchBox?.Text.Trim() ?? string.Empty;
-        if (LogRetentionText is not null)
-        {
-            LogRetentionText.Text = $"自动保留最近 {AppLogger.MaximumEntries} 条；启动、刷新和日志达到上限时会自动清理。";
-        }
+        var level = SelectedLogLevelFilter();
 
         _visibleLogs.Clear();
         foreach (var entry in _logger.Entries.Where(entry =>
-                     string.IsNullOrWhiteSpace(filter)
-                     || entry.Message.Contains(filter, StringComparison.CurrentCultureIgnoreCase)))
+                     (level is null || entry.Level == level)
+                     && (string.IsNullOrWhiteSpace(filter)
+                         || entry.Message.Contains(filter, StringComparison.CurrentCultureIgnoreCase))))
         {
             _visibleLogs.Add(new LogRow(entry));
+        }
+
+        if (LogRetentionText is not null)
+        {
+            var retention = $"自动保留最近 {AppLogger.MaximumEntries} 条；启动、刷新和日志达到上限时会自动清理。";
+            // The filter can hide every entry, and an empty list with no explanation reads
+            // as "nothing was ever logged" instead of "your filter matched nothing".
+            LogRetentionText.Text = level is null && string.IsNullOrWhiteSpace(filter)
+                ? retention
+                : $"{retention}    ·    当前筛选命中 {_visibleLogs.Count} / {_logger.Entries.Count} 条。";
         }
 
         if (_visibleLogs.Count > 0)
@@ -514,6 +585,15 @@ public partial class MainWindow
             LogListBox.ScrollIntoView(_visibleLogs[^1]);
         }
     }
+
+    private AppLogLevel? SelectedLogLevelFilter() =>
+        ((LogLevelFilterCombo?.SelectedItem as ComboBoxItem)?.Tag as string) switch
+        {
+            "Info" => AppLogLevel.Info,
+            "Warning" => AppLogLevel.Warning,
+            "Error" => AppLogLevel.Error,
+            _ => null
+        };
 
     private void CopyLogs_Click(object sender, RoutedEventArgs e)
     {
@@ -529,7 +609,13 @@ public partial class MainWindow
 public sealed class LogRow
 {
     public LogEntry Entry { get; }
-    public string TimeText => Entry.Timestamp.ToString("HH:mm:ss");
+
+    // Same-day entries stay compact; anything older says so, because a bare time of
+    // day silently reads as "just now" when the log survives a restart.
+    public string TimeText => Entry.Timestamp.Date == DateTimeOffset.Now.Date
+        ? Entry.Timestamp.ToString("HH:mm:ss")
+        : Entry.Timestamp.ToString("MM-dd HH:mm:ss");
+    public string FullTimeText => Entry.Timestamp.ToString(LogEntry.TimestampFormat);
     public string LevelText => Entry.Level switch { AppLogLevel.Error => "错误", AppLogLevel.Warning => "警告", _ => "信息" };
     public string Message => Entry.Message;
     public Brush LevelBrush => Entry.Level switch

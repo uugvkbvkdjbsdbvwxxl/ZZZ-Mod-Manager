@@ -6,6 +6,7 @@ using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
+using ZZZModManager.Infrastructure;
 using ZZZModManager.Models;
 using ZZZModManager.Services;
 using ZZZModManager.Themes;
@@ -19,13 +20,15 @@ public partial class MainWindow
         _library.GetAvailableCharacterGroups();
         var manifests = _library.GetAll().ToList();
         var missingByMod = _dependencyResolver.GetMissingDependencies(manifests);
+        var overlapsByMod = _library.GetOverlapMap();
         var cards = manifests.Select(manifest =>
         {
             var path = _library.GetAbsolutePath(manifest);
             var missing = missingByMod.TryGetValue(manifest.Id, out var dependencies) ? dependencies : [];
+            var overlaps = overlapsByMod.TryGetValue(manifest.Id, out var peers) ? peers : [];
             _runtimeStates.TryGetValue(manifest.Id, out var runtimeState);
             var character = _library.DetectCharacterGroup(manifest);
-            return new ModCardViewModel(manifest, path, missing, runtimeState, _liveSwitch, character);
+            return new ModCardViewModel(manifest, path, missing, overlaps, runtimeState, _liveSwitch, character);
         }).ToList();
 
         RebuildCharacterFilters(cards);
@@ -51,7 +54,15 @@ public partial class MainWindow
             ? "还没有导入 Mod；可以在设置页拖入压缩包或文件夹。"
             : "当前筛选没有结果，请清除搜索、角色或状态筛选。";
         EmptyStateBorder.Visibility = filtered.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
-        StatusText.Text = $"Mod 库：{_paths.ModsRoot}    ·    {manifests.Count} 个 Mod    ·    {manifests.Count(mod => mod.Enabled)} 个已启用";
+
+        // 槽位池是"实时切换"能力的唯一硬上限，用满之后新 Mod 只能走安全重载；
+        // 因此把占用量常驻状态栏，让用户在导入前就知道还剩多少余量。
+        var occupancy = _liveSwitch.GetSlotOccupancy(manifests);
+        StatusText.Text = $"Mod 库：{_paths.ModsRoot}    ·    {manifests.Count} 个 Mod    ·    {manifests.Count(mod => mod.Enabled)} 个已启用    ·    {occupancy.DisplayText}";
+        StatusText.Foreground = occupancy.IsFull ? ThemeBrushes.Warning : ThemeBrushes.SecondaryText;
+        StatusText.ToolTip = occupancy.IsFull
+            ? $"实时槽位已全部占用；新增的 {occupancy.WaitingForSlot} 个 Mod 需要安全重载才能生效。"
+            : $"还剩 {occupancy.FreeSlots} 个实时槽位；槽位由管理器内部分配，无需物理按键。";
     }
 
     private void RebuildCharacterFilters(IReadOnlyList<ModCardViewModel> cards)
@@ -346,14 +357,14 @@ public partial class MainWindow
     {
         if ((sender as Button)?.Tag is not ModCardViewModel card || card.PreviewPath is null)
         {
-            ShowToast("该 Mod 根目录没有可用的 preview.png。", true);
+            ShowToast("该 Mod 里没有找到可用的预览图（preview.png/.jpg/.webp）。", true);
             return;
         }
 
         var image = PreviewImageLoader.Load(card.PreviewPath, 1800);
         if (image is null)
         {
-            ShowToast("preview.png 已损坏或无法读取。", true);
+            ShowToast("预览图已损坏或无法读取。", true);
             return;
         }
 
@@ -389,13 +400,10 @@ public partial class MainWindow
         try
         {
             var reportPath = Path.Combine(card.DirectoryPath, card.Manifest.ReportFile);
-            var report = File.Exists(reportPath) ? File.ReadAllText(reportPath) : "没有找到导入报告。";
-            var audit = _liveSwitch.Audit(card.Manifest);
-            var text = new StringBuilder(report)
-                .AppendLine().AppendLine().AppendLine("=== 实时门控审计 ===")
-                .AppendLine(audit.IsSafe ? "通过：所有可执行段均受禁用条件控制。" : string.Join(Environment.NewLine, audit.Issues))
-                .ToString();
-            new TextViewerWindow($"诊断 · {card.DisplayName}", text) { Owner = this }.ShowDialog();
+            // 报告缺失是老 Mod 的正常状态，交给汇总器写成一条说明而不是当成错误。
+            var report = File.Exists(reportPath) ? _store.Load<ImportReport?>(reportPath, () => null) : null;
+            var diagnostics = ModDiagnosticsSummarizer.Build(card.Manifest, report, _liveSwitch.Audit(card.Manifest));
+            new ModDiagnosticsWindow(card.DisplayName, diagnostics) { Owner = this }.ShowDialog();
         }
         catch (Exception ex)
         {
@@ -522,6 +530,7 @@ public sealed class ModCardViewModel
     public CharacterGroupInfo Character { get; }
     public string DirectoryPath { get; }
     public IReadOnlyList<string> MissingDependencies { get; }
+    public IReadOnlyList<ModManifest> ConflictingMods { get; }
     public string DisplayName => Manifest.DisplayName;
     public string CharacterDisplayName => Character.DisplayName;
     public string? PreviewPath { get; }
@@ -541,12 +550,15 @@ public sealed class ModCardViewModel
     public string CapabilityText { get; }
     public Brush CapabilityBrush { get; }
     public string DependencyText => MissingDependencies.Count == 0 ? string.Empty : "缺少依赖：" + string.Join("、", MissingDependencies);
+    public string ConflictText { get; }
+    public Brush ConflictBrush { get; }
     public string RuntimeMessage { get; }
 
     internal ModCardViewModel(
         ModManifest manifest,
         string directoryPath,
         IReadOnlyList<string> missingDependencies,
+        IReadOnlyList<ModManifest> conflictingMods,
         RuntimeCardState? runtimeState,
         ILiveModSwitchService liveSwitch,
         CharacterGroupInfo character)
@@ -554,10 +566,9 @@ public sealed class ModCardViewModel
         Manifest = manifest;
         DirectoryPath = directoryPath;
         MissingDependencies = missingDependencies;
+        ConflictingMods = conflictingMods;
         Character = character;
-        PreviewPath = string.IsNullOrWhiteSpace(manifest.PreviewFile)
-            ? null
-            : Path.Combine(directoryPath, manifest.PreviewFile);
+        PreviewPath = ModPreviewLocator.Resolve(directoryPath, manifest.PreviewFile);
         RuntimeMessage = runtimeState?.Message ?? string.Empty;
 
         var pending = runtimeState?.Application is ModStateApplication.Pending or ModStateApplication.Failed;
@@ -576,13 +587,26 @@ public sealed class ModCardViewModel
             LiveSwitchCapability.RequiresRestart => string.IsNullOrWhiteSpace(manifest.LiveSwitchBlockReason)
                 ? "静态顶点限制 · 启动预加载后可实时切换"
                 : manifest.LiveSwitchBlockReason,
-            LiveSwitchCapability.SlotUnavailable => "实时槽位已满 · 需要安全重载",
+            LiveSwitchCapability.SlotUnavailable => $"实时槽位已满（{LiveModSwitchService.MaximumSlots} / {LiveModSwitchService.MaximumSlots}）· 需要安全重载",
             LiveSwitchCapability.Unsupported => "门控审计未通过 · 需要安全重载",
             _ => "需要安全重载"
         };
         CapabilityBrush = manifest.LiveSwitchCapability == LiveSwitchCapability.Immediate
             ? ThemeBrushes.Success
             : ThemeBrushes.Warning;
+
+        // 同时启用的重叠才会真的互相覆盖，未启用的只是提前预警，
+        // 因此两种情况用不同措辞和不同语义色，避免把提示当成故障。
+        var activeConflicts = conflictingMods
+            .Where(peer => peer.Enabled && manifest.Enabled)
+            .Select(peer => peer.DisplayName)
+            .ToList();
+        ConflictText = conflictingMods.Count == 0
+            ? string.Empty
+            : activeConflicts.Count > 0
+                ? "正在冲突：" + string.Join("、", activeConflicts)
+                : "文件重叠：" + string.Join("、", conflictingMods.Select(peer => peer.DisplayName));
+        ConflictBrush = activeConflicts.Count > 0 ? ThemeBrushes.Error : ThemeBrushes.SecondaryText;
     }
 
     public bool MatchesSearch(string search) => string.IsNullOrWhiteSpace(search)

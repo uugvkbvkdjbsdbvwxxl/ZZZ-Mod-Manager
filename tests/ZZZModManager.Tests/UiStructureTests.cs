@@ -39,10 +39,11 @@ public sealed class UiStructureTests
                      "CharacterFiltersItemsControl", "SearchBox", "StatusFilterCombo",
                      "ModGroupsItemsControl", "EmptyStateBorder", "EmptyStateText", "GamePathBox",
                      "ImportDropZone", "AutoHideCheckBox", "ReloadRequiredCheckBox",
-                     "CloseBehaviorComboBox", "LogSearchBox", "LogListBox", "ToastBorder",
+                     "CloseBehaviorComboBox", "LogSearchBox", "LogLevelFilterCombo", "LogListBox", "ToastBorder",
                      "LightboxOverlay", "LightboxImage", "LightboxZoomSlider",
                      "BackgroundImage", "BackgroundVeil", "ThemeComboBox",
-                     "SidebarOpacitySlider", "PanelOpacitySlider", "BackgroundOpacitySlider"
+                     "SidebarOpacitySlider", "PanelOpacitySlider", "BackgroundOpacitySlider",
+                     "ModRootBox", "ModRootHintText"
                  })
         {
             Assert.Contains(name, names);
@@ -327,6 +328,74 @@ public sealed class UiStructureTests
 
         var itemsPanel = grid.Elements(PresentationNamespace + "ItemsControl.ItemsPanel").Single();
         Assert.NotEmpty(itemsPanel.Descendants(PresentationNamespace + "VirtualizingStackPanel"));
+    }
+
+    [Fact]
+    public void ModRootIsShownReadOnlyNextToItsBrowseButtonWithARestartHint()
+    {
+        var document = LoadFixture("MainWindow.xaml");
+        var box = document.Descendants(PresentationNamespace + "TextBox")
+            .Single(element => (string?)element.Attribute(XamlNamespace + "Name") == "ModRootBox");
+
+        Assert.Equal("True", (string?)box.Attribute("IsReadOnly"));
+
+        var grid = box.Parent!;
+        Assert.Equal("Grid", grid.Name.LocalName);
+        var columns = grid.Elements(PresentationNamespace + "Grid.ColumnDefinitions")
+            .Single()
+            .Elements(PresentationNamespace + "ColumnDefinition")
+            .Select(column => (string?)column.Attribute("Width"))
+            .ToList();
+        Assert.Equal(["*", "Auto"], columns);
+
+        var browse = grid.Elements(PresentationNamespace + "Button").Single();
+        Assert.Equal("BrowseModRoot_Click", (string?)browse.Attribute("Click"));
+        Assert.Equal("1", (string?)browse.Attribute("Grid.Column"));
+
+        var hint = document.Descendants(PresentationNamespace + "TextBlock")
+            .Single(element => (string?)element.Attribute(XamlNamespace + "Name") == "ModRootHintText");
+        Assert.Equal("Wrap", (string?)hint.Attribute("TextWrapping"));
+        Assert.Same(grid.Parent, hint.Parent);
+    }
+
+    [Fact]
+    public void LogLevelFilterSitsInsideTheSameToolbarRowAsTheSearchBox()
+    {
+        var document = LoadFixture("MainWindow.xaml");
+        var combo = document.Descendants(PresentationNamespace + "ComboBox")
+            .Single(element => (string?)element.Attribute(XamlNamespace + "Name") == "LogLevelFilterCombo");
+
+        Assert.Equal("LogLevelFilter_SelectionChanged", (string?)combo.Attribute("SelectionChanged"));
+        Assert.Equal("0", (string?)combo.Attribute("SelectedIndex"));
+
+        var search = document.Descendants(PresentationNamespace + "TextBox")
+            .Single(element => (string?)element.Attribute(XamlNamespace + "Name") == "LogSearchBox");
+        Assert.Same(search.Parent, combo.Parent);
+
+        var tags = combo.Elements(PresentationNamespace + "ComboBoxItem")
+            .Select(item => (string?)item.Attribute("Tag"))
+            .ToList();
+        Assert.Equal(["All", "Info", "Warning", "Error"], tags);
+
+        // Colour alone must never carry the level, so every option keeps a text label.
+        Assert.All(
+            combo.Elements(PresentationNamespace + "ComboBoxItem"),
+            item => Assert.False(string.IsNullOrWhiteSpace((string?)item.Attribute("Content"))));
+    }
+
+    [Fact]
+    public void ConflictLineSitsWithTheOtherCardWarningsAndCarriesItsOwnBrush()
+    {
+        var document = LoadFixture("MainWindow.xaml");
+        var conflict = document.Descendants(PresentationNamespace + "TextBlock")
+            .Single(element => (string?)element.Attribute("Text") == "{Binding ConflictText}");
+
+        Assert.Equal("{Binding ConflictBrush}", (string?)conflict.Attribute("Foreground"));
+        Assert.Equal("Wrap", (string?)conflict.Attribute("TextWrapping"));
+
+        var dependency = document.Descendants(PresentationNamespace + "TextBlock")
+            .Single(element => (string?)element.Attribute("Text") == "{Binding DependencyText}");
+        Assert.Same(dependency.Parent, conflict.Parent);
     }
 
     private static XDocument LoadFixture(string fileName)

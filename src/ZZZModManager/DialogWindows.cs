@@ -151,6 +151,176 @@ public sealed class TextViewerWindow : Window
     }
 }
 
+public sealed class ModDiagnosticsWindow : Window
+{
+    public ModDiagnosticsWindow(string modName, ModDiagnosticsReport report)
+    {
+        Title = $"诊断 · {modName}";
+        Width = 860;
+        Height = 640;
+        MinWidth = 640;
+        MinHeight = 460;
+        ResizeMode = ResizeMode.CanResize;
+        WindowStartupLocation = WindowStartupLocation.CenterOwner;
+        Background = (System.Windows.Media.Brush)FindResource("DialogBackgroundBrush");
+        Foreground = (System.Windows.Media.Brush)FindResource("DialogTextBrush");
+        FontFamily = new System.Windows.Media.FontFamily("Segoe UI, Microsoft YaHei UI");
+        FontSize = 13;
+
+        var root = new DockPanel
+        {
+            Margin = new Thickness(20),
+            Background = (System.Windows.Media.Brush)FindResource("DialogBackgroundBrush")
+        };
+
+        var title = new TextBlock
+        {
+            Text = modName,
+            FontSize = 20,
+            FontWeight = FontWeights.SemiBold,
+            Foreground = (System.Windows.Media.Brush)FindResource("DialogTextBrush"),
+            TextWrapping = TextWrapping.Wrap,
+            Margin = new Thickness(4, 0, 0, 5)
+        };
+        DockPanel.SetDock(title, Dock.Top);
+        root.Children.Add(title);
+
+        var headline = new TextBlock
+        {
+            Text = report.Headline,
+            Foreground = SeverityBrush(report.Severity),
+            TextWrapping = TextWrapping.Wrap,
+            Margin = new Thickness(4, 0, 0, 14)
+        };
+        DockPanel.SetDock(headline, Dock.Top);
+        root.Children.Add(headline);
+
+        var buttons = new StackPanel
+        {
+            Orientation = Orientation.Horizontal,
+            HorizontalAlignment = HorizontalAlignment.Right,
+            Margin = new Thickness(0, 14, 0, 0)
+        };
+        var copy = new Button
+        {
+            Content = "复制全文",
+            Width = 100,
+            Foreground = (System.Windows.Media.Brush)FindResource("DialogTextBrush"),
+            Background = (System.Windows.Media.Brush)FindResource("DialogRaisedBrush"),
+            BorderBrush = (System.Windows.Media.Brush)FindResource("DialogBorderBrush")
+        };
+        copy.Click += (_, _) =>
+        {
+            // Clipboard access can fail while another process holds it; the dialog
+            // stays usable instead of surfacing an exception on a read-only view.
+            try
+            {
+                Clipboard.SetText(report.ToPlainText());
+            }
+            catch (System.Runtime.InteropServices.COMException)
+            {
+            }
+        };
+        var close = new Button
+        {
+            Content = "关闭",
+            Width = 88,
+            Margin = new Thickness(10, 0, 0, 0),
+            Foreground = (System.Windows.Media.Brush)FindResource("DialogTextBrush"),
+            Background = (System.Windows.Media.Brush)FindResource("DialogRaisedBrush"),
+            BorderBrush = (System.Windows.Media.Brush)FindResource("DialogBorderBrush")
+        };
+        close.Click += (_, _) => Close();
+        buttons.Children.Add(copy);
+        buttons.Children.Add(close);
+        DockPanel.SetDock(buttons, Dock.Bottom);
+        root.Children.Add(buttons);
+
+        var body = new StackPanel { Margin = new Thickness(10, 6, 10, 6) };
+        foreach (var section in report.Sections)
+        {
+            body.Children.Add(new TextBlock
+            {
+                Text = section.Title,
+                FontSize = 15,
+                FontWeight = FontWeights.SemiBold,
+                Foreground = (System.Windows.Media.Brush)FindResource("DialogTextBrush"),
+                Margin = new Thickness(0, 10, 0, 6)
+            });
+
+            if (section.Lines.Count == 0)
+            {
+                body.Children.Add(new TextBlock
+                {
+                    Text = string.IsNullOrEmpty(section.EmptyText) ? "没有内容。" : section.EmptyText,
+                    Foreground = (System.Windows.Media.Brush)FindResource("DialogMutedTextBrush"),
+                    TextWrapping = TextWrapping.Wrap,
+                    Margin = new Thickness(0, 0, 0, 4)
+                });
+                continue;
+            }
+
+            foreach (var line in section.Lines)
+            {
+                var row = new StackPanel { Margin = new Thickness(0, 0, 0, 8) };
+                var tag = SeverityTag(line.Severity);
+                row.Children.Add(new TextBlock
+                {
+                    Text = string.IsNullOrEmpty(tag) ? line.Title : $"{tag} {line.Title}",
+                    Foreground = SeverityBrush(line.Severity),
+                    TextWrapping = TextWrapping.Wrap
+                });
+                if (!string.IsNullOrEmpty(line.Detail))
+                {
+                    row.Children.Add(new TextBlock
+                    {
+                        Text = line.Detail,
+                        Foreground = (System.Windows.Media.Brush)FindResource("DialogMutedTextBrush"),
+                        TextWrapping = TextWrapping.Wrap,
+                        FontFamily = new System.Windows.Media.FontFamily("Cascadia Mono, Consolas, Microsoft YaHei UI"),
+                        Margin = new Thickness(0, 2, 0, 0)
+                    });
+                }
+
+                body.Children.Add(row);
+            }
+        }
+
+        root.Children.Add(new Border
+        {
+            Background = (System.Windows.Media.Brush)FindResource("DialogSurfaceBrush"),
+            BorderBrush = (System.Windows.Media.Brush)FindResource("DialogBorderBrush"),
+            BorderThickness = new Thickness(1),
+            CornerRadius = new CornerRadius(10),
+            Padding = new Thickness(5),
+            Child = new ScrollViewer
+            {
+                Content = body,
+                Background = System.Windows.Media.Brushes.Transparent,
+                VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+                HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled
+            }
+        });
+        Content = root;
+    }
+
+    // Severity is carried by the tag text as well, so the report stays readable
+    // without relying on color alone.
+    private static string SeverityTag(IssueSeverity severity) => severity switch
+    {
+        IssueSeverity.Error => "【错误】",
+        IssueSeverity.Warning => "【警告】",
+        _ => string.Empty
+    };
+
+    private System.Windows.Media.Brush SeverityBrush(IssueSeverity severity) => severity switch
+    {
+        IssueSeverity.Error => (System.Windows.Media.Brush)FindResource("ErrorBrush"),
+        IssueSeverity.Warning => (System.Windows.Media.Brush)FindResource("WarningBrush"),
+        _ => (System.Windows.Media.Brush)FindResource("DialogTextBrush")
+    };
+}
+
 public sealed class GroupSelectionWindow : Window
 {
     private readonly ComboBox _groups;

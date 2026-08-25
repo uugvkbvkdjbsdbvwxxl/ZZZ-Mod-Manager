@@ -215,7 +215,7 @@
                                                                                     HorizontalAlignment="Center" VerticalAlignment="Center">
                                                                             <TextBlock Text="◌" FontSize="32" HorizontalAlignment="Center"
                                                                                        Foreground="{DynamicResource MutedTextBrush}" />
-                                                                            <TextBlock Text="无 preview.png" Margin="0,4,0,0"
+                                                                            <TextBlock Text="无预览图" Margin="0,4,0,0"
                                                                                        Foreground="{DynamicResource SecondaryTextBrush}" />
                                                                         </StackPanel>
                                                                         <Border HorizontalAlignment="Right" VerticalAlignment="Top" Margin="8" Padding="8,4"
@@ -242,6 +242,8 @@
                                                                                    Foreground="{Binding CapabilityBrush}" TextWrapping="Wrap" />
                                                                         <TextBlock Text="{Binding DependencyText}" Margin="0,3,0,0" FontSize="11"
                                                                                    Foreground="{DynamicResource WarningBrush}" TextWrapping="Wrap" />
+                                                                        <TextBlock Text="{Binding ConflictText}" Margin="0,3,0,0" FontSize="11"
+                                                                                   Foreground="{Binding ConflictBrush}" TextWrapping="Wrap" />
                                                                         <TextBlock Text="{Binding RuntimeMessage}" Margin="0,3,0,0" FontSize="11"
                                                                                    Foreground="{DynamicResource InfoBrush}" TextWrapping="Wrap" />
                                                                     </StackPanel>
@@ -321,6 +323,26 @@
                                     <Button Content="导入已授权运行核心" Click="ImportRuntime_Click" />
                                     <Button Content="离线修复运行核心" Click="RepairRuntime_Click" />
                                 </WrapPanel>
+                            </StackPanel>
+                        </Border>
+                        <Border Style="{StaticResource PanelBorder}" Margin="0,0,0,8">
+                            <StackPanel>
+                                <TextBlock Text="Mod 库位置" FontSize="16" FontWeight="SemiBold" />
+                                <TextBlock Text="Mod、配置、日志与备份都保存在这个目录下。换盘或空间不足时可以整体迁移。"
+                                           Margin="3,4,0,8" Foreground="{DynamicResource SecondaryTextBrush}"
+                                           TextWrapping="Wrap" />
+                                <TextBlock Text="库根目录" Margin="3,0,0,2"
+                                           Foreground="{DynamicResource MutedTextBrush}" FontSize="11" />
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBox x:Name="ModRootBox" IsReadOnly="True" />
+                                    <Button Grid.Column="1" Content="更换目录" Click="BrowseModRoot_Click" />
+                                </Grid>
+                                <TextBlock x:Name="ModRootHintText" Margin="3,6,0,0" TextWrapping="Wrap"
+                                           Foreground="{DynamicResource MutedTextBrush}" />
                             </StackPanel>
                         </Border>
                         <Border x:Name="ImportDropZone" Style="{StaticResource PanelBorder}" Margin="0,0,0,8" MinHeight="88"
@@ -452,8 +474,17 @@
                             <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
                                 <TextBlock Text="搜索" Foreground="{DynamicResource SecondaryTextBrush}"
                                            VerticalAlignment="Center" Margin="3,0,5,0" />
-                                <TextBox x:Name="LogSearchBox" Width="260" ToolTip="搜索日志内容或级别"
+                                <TextBox x:Name="LogSearchBox" Width="208" ToolTip="搜索日志内容；级别请用右侧筛选"
                                          TextChanged="LogSearchBox_TextChanged" />
+                                <TextBlock Text="级别" Foreground="{DynamicResource SecondaryTextBrush}"
+                                           VerticalAlignment="Center" Margin="10,0,5,0" />
+                                <ComboBox x:Name="LogLevelFilterCombo" Width="104" ToolTip="只显示选中级别的日志"
+                                          SelectionChanged="LogLevelFilter_SelectionChanged" SelectedIndex="0">
+                                    <ComboBoxItem Tag="All" Content="全部级别" />
+                                    <ComboBoxItem Tag="Info" Content="信息" />
+                                    <ComboBoxItem Tag="Warning" Content="警告" />
+                                    <ComboBoxItem Tag="Error" Content="错误" />
+                                </ComboBox>
                             </StackPanel>
                             <Button Grid.Column="1" Style="{StaticResource UtilityButton}" Content="复制" Click="CopyLogs_Click" />
                             <Button Grid.Column="2" Style="{StaticResource UtilityButton}" Content="刷新" Click="RefreshLogs_Click" />
@@ -468,11 +499,12 @@
                                 <DataTemplate>
                                     <Grid Margin="5,3">
                                         <Grid.ColumnDefinitions>
-                                            <ColumnDefinition Width="72" />
+                                            <ColumnDefinition Width="104" />
                                             <ColumnDefinition Width="58" />
                                             <ColumnDefinition Width="*" />
                                         </Grid.ColumnDefinitions>
-                                        <TextBlock Text="{Binding TimeText}" Foreground="{DynamicResource MutedTextBrush}"
+                                        <TextBlock Text="{Binding TimeText}" ToolTip="{Binding FullTimeText}"
+                                                   Foreground="{DynamicResource MutedTextBrush}"
                                                    FontSize="11" />
                                         <TextBlock Grid.Column="1" Text="{Binding LevelText}" Foreground="{Binding LevelBrush}"
                                                    FontWeight="SemiBold" FontSize="11" />
