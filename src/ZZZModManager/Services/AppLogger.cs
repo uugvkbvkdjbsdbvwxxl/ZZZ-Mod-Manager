@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text;
 using System.Text.RegularExpressions;
 using ZZZModManager.Infrastructure;
@@ -27,6 +28,9 @@ public sealed class AppLogger : IAppLogger
     private const long MaximumLogBytes = 2L * 1024 * 1024;
     private const int CleanupWriteInterval = 64;
     private static readonly Encoding Utf8NoBom = new UTF8Encoding(false);
+    private static readonly Regex PersistedStampRegex = new(
+        @"^\[(?<stamp>[^\]]+)\] ?(?<payload>.*)$",
+        RegexOptions.Compiled);
     private static readonly Regex PersistedLevelRegex = new(
         @"^\[(?<level>Info|Warning|Error)\]\s*(?<message>.*)$",
         RegexOptions.Compiled | RegexOptions.IgnoreCase);
@@ -74,11 +78,12 @@ public sealed class AppLogger : IAppLogger
 
             try
             {
+                var legacyDate = ResolveLegacyDate();
                 foreach (var line in File.ReadLines(_logFile, Encoding.UTF8).TakeLast(MaximumEntries))
                 {
                     if (!string.IsNullOrWhiteSpace(line))
                     {
-                        _entries.Add(Parse(line));
+                        _entries.Add(Parse(line, legacyDate));
                     }
                 }
             }
@@ -144,6 +149,9 @@ public sealed class AppLogger : IAppLogger
         try
         {
             var bytesBefore = new FileInfo(_logFile).Length;
+            // Trimming is maintenance, not a new entry, so the file keeps saying when it
+            // was last written to. Legacy undated lines are dated from exactly this stamp.
+            var lastWrite = File.GetLastWriteTimeUtc(_logFile);
             var retained = new Queue<string>(MaximumEntries);
             var totalEntries = 0;
             foreach (var line in File.ReadLines(_logFile, Encoding.UTF8))
@@ -171,6 +179,7 @@ public sealed class AppLogger : IAppLogger
 
             File.WriteAllLines(temporary, retained, Utf8NoBom);
             File.Move(temporary, _logFile, true);
+            File.SetLastWriteTimeUtc(_logFile, lastWrite);
             _writesSinceCleanup = 0;
 
             var bytesAfter = new FileInfo(_logFile).Length;
@@ -198,14 +207,24 @@ public sealed class AppLogger : IAppLogger
         }
     }
 
-    private static LogEntry Parse(string line)
+    private DateTimeOffset ResolveLegacyDate()
     {
-        if (line.Length >= 10 && line[0] == '[' && line[9] == ']'
-            && TimeSpan.TryParse(line.AsSpan(1, 8), out var time))
+        try
         {
-            var now = DateTimeOffset.Now;
-            var timestamp = new DateTimeOffset(now.Year, now.Month, now.Day, time.Hours, time.Minutes, time.Seconds, now.Offset);
-            var payload = line.Length > 11 ? line[11..] : string.Empty;
+            return new DateTimeOffset(File.GetLastWriteTime(_logFile));
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            return DateTimeOffset.Now;
+        }
+    }
+
+    private static LogEntry Parse(string line, DateTimeOffset legacyDate)
+    {
+        var stampMatch = PersistedStampRegex.Match(line);
+        if (stampMatch.Success && TryParseTimestamp(stampMatch.Groups["stamp"].Value, legacyDate, out var timestamp))
+        {
+            var payload = stampMatch.Groups["payload"].Value;
             var levelMatch = PersistedLevelRegex.Match(payload);
             if (levelMatch.Success
                 && Enum.TryParse<AppLogLevel>(levelMatch.Groups["level"].Value, ignoreCase: true, out var level))
@@ -218,5 +237,37 @@ public sealed class AppLogger : IAppLogger
         }
 
         return new LogEntry(DateTimeOffset.Now, AppLogLevel.Info, line);
+    }
+
+    private static bool TryParseTimestamp(string stamp, DateTimeOffset legacyDate, out DateTimeOffset timestamp)
+    {
+        if (DateTime.TryParseExact(
+                stamp,
+                LogEntry.TimestampFormat,
+                CultureInfo.InvariantCulture,
+                DateTimeStyles.None,
+                out var dated))
+        {
+            timestamp = new DateTimeOffset(dated, TimeZoneInfo.Local.GetUtcOffset(dated));
+            return true;
+        }
+
+        // Logs written before the date was persisted only carry a time of day. Their
+        // day is unknowable, so the file's last write day is the closest honest guess.
+        if (TimeSpan.TryParseExact(stamp, @"hh\:mm\:ss", CultureInfo.InvariantCulture, out var time))
+        {
+            timestamp = new DateTimeOffset(
+                legacyDate.Year,
+                legacyDate.Month,
+                legacyDate.Day,
+                time.Hours,
+                time.Minutes,
+                time.Seconds,
+                legacyDate.Offset);
+            return true;
+        }
+
+        timestamp = default;
+        return false;
     }
 }

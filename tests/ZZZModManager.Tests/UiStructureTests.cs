@@ -42,7 +42,8 @@ public sealed class UiStructureTests
                      "CloseBehaviorComboBox", "LogSearchBox", "LogListBox", "ToastBorder",
                      "LightboxOverlay", "LightboxImage", "LightboxZoomSlider",
                      "BackgroundImage", "BackgroundVeil", "ThemeComboBox",
-                     "SidebarOpacitySlider", "PanelOpacitySlider", "BackgroundOpacitySlider"
+                     "SidebarOpacitySlider", "PanelOpacitySlider", "BackgroundOpacitySlider",
+                     "ModRootBox", "ModRootHintText"
                  })
         {
             Assert.Contains(name, names);
@@ -327,6 +328,34 @@ public sealed class UiStructureTests
 
         var itemsPanel = grid.Elements(PresentationNamespace + "ItemsControl.ItemsPanel").Single();
         Assert.NotEmpty(itemsPanel.Descendants(PresentationNamespace + "VirtualizingStackPanel"));
+    }
+
+    [Fact]
+    public void ModRootIsShownReadOnlyNextToItsBrowseButtonWithARestartHint()
+    {
+        var document = LoadFixture("MainWindow.xaml");
+        var box = document.Descendants(PresentationNamespace + "TextBox")
+            .Single(element => (string?)element.Attribute(XamlNamespace + "Name") == "ModRootBox");
+
+        Assert.Equal("True", (string?)box.Attribute("IsReadOnly"));
+
+        var grid = box.Parent!;
+        Assert.Equal("Grid", grid.Name.LocalName);
+        var columns = grid.Elements(PresentationNamespace + "Grid.ColumnDefinitions")
+            .Single()
+            .Elements(PresentationNamespace + "ColumnDefinition")
+            .Select(column => (string?)column.Attribute("Width"))
+            .ToList();
+        Assert.Equal(["*", "Auto"], columns);
+
+        var browse = grid.Elements(PresentationNamespace + "Button").Single();
+        Assert.Equal("BrowseModRoot_Click", (string?)browse.Attribute("Click"));
+        Assert.Equal("1", (string?)browse.Attribute("Grid.Column"));
+
+        var hint = document.Descendants(PresentationNamespace + "TextBlock")
+            .Single(element => (string?)element.Attribute(XamlNamespace + "Name") == "ModRootHintText");
+        Assert.Equal("Wrap", (string?)hint.Attribute("TextWrapping"));
+        Assert.Same(grid.Parent, hint.Parent);
     }
 
     private static XDocument LoadFixture(string fileName)

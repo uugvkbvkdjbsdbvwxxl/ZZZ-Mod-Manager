@@ -6,6 +6,7 @@ using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
+using ZZZModManager.Infrastructure;
 using ZZZModManager.Models;
 using ZZZModManager.Services;
 using ZZZModManager.Themes;
@@ -346,14 +347,14 @@ public partial class MainWindow
     {
         if ((sender as Button)?.Tag is not ModCardViewModel card || card.PreviewPath is null)
         {
-            ShowToast("该 Mod 根目录没有可用的 preview.png。", true);
+            ShowToast("该 Mod 里没有找到可用的预览图（preview.png/.jpg/.webp）。", true);
             return;
         }
 
         var image = PreviewImageLoader.Load(card.PreviewPath, 1800);
         if (image is null)
         {
-            ShowToast("preview.png 已损坏或无法读取。", true);
+            ShowToast("预览图已损坏或无法读取。", true);
             return;
         }
 
@@ -555,9 +556,7 @@ public sealed class ModCardViewModel
         DirectoryPath = directoryPath;
         MissingDependencies = missingDependencies;
         Character = character;
-        PreviewPath = string.IsNullOrWhiteSpace(manifest.PreviewFile)
-            ? null
-            : Path.Combine(directoryPath, manifest.PreviewFile);
+        PreviewPath = ModPreviewLocator.Resolve(directoryPath, manifest.PreviewFile);
         RuntimeMessage = runtimeState?.Message ?? string.Empty;
 
         var pending = runtimeState?.Application is ModStateApplication.Pending or ModStateApplication.Failed;

@@ -131,6 +131,8 @@ public partial class MainWindow : Window
         CharacterFiltersItemsControl.ItemsSource = _characterFilters;
         LogListBox.ItemsSource = _visibleLogs;
         GamePathBox.Text = _config.GameExecutablePath ?? string.Empty;
+        ModRootBox.Text = ModRootPointer.Resolve();
+        UpdateModRootHint(ModRootBox.Text);
         AutoHideCheckBox.IsChecked = _config.AutoHideAfterLiveSwitch;
         ReloadRequiredCheckBox.IsChecked = _config.ReloadWhenRequired;
         CloseBehaviorComboBox.SelectedValue = _config.CloseBehavior.ToString();

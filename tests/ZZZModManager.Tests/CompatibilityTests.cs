@@ -721,7 +721,7 @@ filename = body.buf
     }
 
     [Fact]
-    public void DependencyResolverReportsOnlyDependenciesMissingFromEnabledLibrary()
+    public void DependencyResolverTreatsAnInstalledButDisabledProviderAsAvailable()
     {
         var rabbit = new ModManifest
         {
@@ -742,7 +742,8 @@ filename = body.buf
 
         Assert.Empty(resolver.GetMissingDependencies(velina, [rabbit, velina]));
         rabbit.Enabled = false;
-        Assert.Equal(["RabbitFX"], resolver.GetMissingDependencies(velina, [rabbit, velina]));
+        Assert.Empty(resolver.GetMissingDependencies(velina, [rabbit, velina]));
+        Assert.Equal(["RabbitFX"], resolver.GetMissingDependencies(velina, [velina]));
     }
 
     [Fact]
@@ -809,6 +810,39 @@ filename = body.buf
         var entry = Assert.Single(logger.Entries);
         Assert.Equal(AppLogLevel.Info, entry.Level);
         Assert.Equal("旧格式日志", entry.Message);
+    }
+
+    [Fact]
+    public void LoggerPersistsTheDateSoReloadedEntriesKeepTheirDay()
+    {
+        var path = Path.Combine(_paths.LogsRoot, "manager.log");
+        File.WriteAllText(path, "[2024-03-05 08:09:10] [Warning] 昨天的告警" + Environment.NewLine, Encoding.UTF8);
+
+        var logger = new AppLogger(_paths);
+
+        var entry = Assert.Single(logger.Entries);
+        Assert.Equal(new DateTime(2024, 3, 5, 8, 9, 10), entry.Timestamp.DateTime);
+        Assert.Equal(AppLogLevel.Warning, entry.Level);
+        Assert.Equal("昨天的告警", entry.Message);
+
+        logger.Info("今天的记录");
+        Assert.Contains(
+            DateTimeOffset.Now.ToString("yyyy-MM-dd"),
+            File.ReadAllLines(path, Encoding.UTF8)[^1]);
+    }
+
+    [Fact]
+    public void LoggerDatesLegacyLinesFromTheFileInsteadOfToday()
+    {
+        var path = Path.Combine(_paths.LogsRoot, "manager.log");
+        File.WriteAllText(path, "[12:34:56] [Info] 旧格式日志" + Environment.NewLine, Encoding.UTF8);
+        var written = new DateTime(2024, 1, 2, 3, 4, 5);
+        File.SetLastWriteTime(path, written);
+
+        var logger = new AppLogger(_paths);
+
+        var entry = Assert.Single(logger.Entries);
+        Assert.Equal(new DateTime(2024, 1, 2, 12, 34, 56), entry.Timestamp.DateTime);
     }
 
     [Fact]
@@ -971,6 +1005,47 @@ filename = body.buf
         Assert.Contains($"reload_config = {ManagerGameBindings.ReloadIniBinding}", d3dx, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("skip_early_includes_load = 0", d3dx, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("config_initialization_delay = -1", d3dx, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void ModRootPointerFallsBackToTheDefaultWhenNoPointerIsStored()
+    {
+        var pointer = Path.Combine(_root, "pointer", "mod-root.txt");
+
+        Assert.Equal(ModRootPointer.DefaultRoot, ModRootPointer.Resolve(pointer));
+
+        Directory.CreateDirectory(Path.GetDirectoryName(pointer)!);
+        File.WriteAllText(pointer, "   ");
+        Assert.Equal(ModRootPointer.DefaultRoot, ModRootPointer.Resolve(pointer));
+
+        File.WriteAllText(pointer, "Mods\\Velina");
+        Assert.Equal(ModRootPointer.DefaultRoot, ModRootPointer.Resolve(pointer));
+    }
+
+    [Fact]
+    public void ModRootPointerRoundTripsAChosenDirectoryAndCreatesIt()
+    {
+        var pointer = Path.Combine(_root, "pointer", "mod-root.txt");
+        var chosen = Path.Combine(_root, "library", "ZZZMod");
+
+        Assert.True(ModRootPointer.TrySave(pointer, chosen + Path.DirectorySeparatorChar, out var saved));
+        Assert.Equal(chosen, saved);
+        Assert.True(Directory.Exists(chosen));
+        Assert.Equal(chosen, ModRootPointer.Resolve(pointer));
+        Assert.Equal(chosen, new AppPaths(ModRootPointer.Resolve(pointer)).Root);
+    }
+
+    [Fact]
+    public void ModRootPointerRejectsBlankRelativeAndDriveRootCandidates()
+    {
+        Assert.False(ModRootPointer.TryNormalize(null, out _));
+        Assert.False(ModRootPointer.TryNormalize("   ", out _));
+        Assert.False(ModRootPointer.TryNormalize("Mods", out _));
+        Assert.False(ModRootPointer.TryNormalize(Path.GetPathRoot(_root), out _));
+
+        var pointer = Path.Combine(_root, "pointer", "mod-root.txt");
+        Assert.False(ModRootPointer.TrySave(pointer, Path.GetPathRoot(_root), out _));
+        Assert.False(File.Exists(pointer));
     }
 
     private string CreateMod(string wrapper)

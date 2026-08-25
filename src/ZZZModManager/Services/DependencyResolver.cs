@@ -57,7 +57,7 @@ public sealed class DependencyResolver : IDependencyResolver
     private string? GetProblem(DependencyRequirement requirement, IReadOnlyList<ModManifest> installedMods)
     {
         var providers = installedMods
-            .Where(mod => mod.Enabled && ProvidesDependency(mod, requirement.Name))
+            .Where(mod => ProvidesDependency(mod, requirement.Name))
             .Select(mod => new DependencyProvider(
                 DetectVersion(mod.Id, mod.DisplayName, mod.InstalledDirectory, GetManifestPath(mod))))
             .Concat(EnumerateDependencyDirectories()
@@ -137,11 +137,9 @@ public sealed class DependencyResolver : IDependencyResolver
 
     private static bool ProvidesDependency(ModManifest manifest, string dependency)
     {
-        if (!manifest.Enabled)
-        {
-            return false;
-        }
-
+        // Availability is about installation, not activation. A dependency that is
+        // merely switched off is still on disk, and imports land disabled by design,
+        // so gating on Enabled reported every fresh dependency as missing.
         return ContainsDependencyName(manifest.Id, dependency)
             || ContainsDependencyName(manifest.DisplayName, dependency)
             || ContainsDependencyName(manifest.InstalledDirectory, dependency);

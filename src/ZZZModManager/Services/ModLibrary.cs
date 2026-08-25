@@ -159,7 +159,7 @@ public sealed class ModLibrary : IModLibrary
                 Dependencies = [.. report.Dependencies],
                 AppliedFixes = [.. report.Fixes],
                 ReportFile = "import-report.json",
-                PreviewFile = FindRootPreview(finalDirectory)
+                PreviewFile = ModPreviewLocator.Find(finalDirectory)
             };
 
             _state.Mods.Add(manifest);
@@ -690,7 +690,7 @@ public sealed class ModLibrary : IModLibrary
                 changed = true;
             }
 
-            var preview = FindRootPreview(GetAbsolutePath(manifest));
+            var preview = ModPreviewLocator.Find(GetAbsolutePath(manifest));
             if (!string.Equals(preview, manifest.PreviewFile, StringComparison.Ordinal))
             {
                 manifest.PreviewFile = preview;
@@ -809,7 +809,7 @@ public sealed class ModLibrary : IModLibrary
             if (resolution is not null)
             {
                 manifest.InstalledDirectory = Path.GetFileName(resolution);
-                manifest.PreviewFile = FindRootPreview(resolution);
+                manifest.PreviewFile = ModPreviewLocator.Find(resolution);
                 changed = true;
             }
             else if (manifest.Enabled)
@@ -840,7 +840,7 @@ public sealed class ModLibrary : IModLibrary
         }
 
         manifest.InstalledDirectory = Path.GetFileName(recoveredPath);
-        manifest.PreviewFile = FindRootPreview(recoveredPath);
+        manifest.PreviewFile = ModPreviewLocator.Find(recoveredPath);
         return new DirectoryResolution(recoveredPath, ManifestChanged: true);
     }
 
@@ -864,25 +864,6 @@ public sealed class ModLibrary : IModLibrary
     }
 
     private void SaveState() => _store.Save(_paths.LibraryFile, _state);
-
-    private static string? FindRootPreview(string root)
-    {
-        if (!Directory.Exists(root))
-        {
-            return null;
-        }
-
-        try
-        {
-            var path = Directory.EnumerateFiles(root, "*", SearchOption.TopDirectoryOnly)
-                .FirstOrDefault(file => string.Equals(Path.GetFileName(file), "preview.png", StringComparison.OrdinalIgnoreCase));
-            return path is null ? null : Path.GetFileName(path);
-        }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
-        {
-            return null;
-        }
-    }
 
     private static bool SameId(ModManifest left, ModManifest right) =>
         string.Equals(left.Id, right.Id, StringComparison.OrdinalIgnoreCase);
