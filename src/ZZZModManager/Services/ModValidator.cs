@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text;
 using System.Text.RegularExpressions;
 using ZZZModManager.Infrastructure;
@@ -8,6 +9,216 @@ namespace ZZZModManager.Services;
 public interface IModValidator
 {
     ImportReport ValidateAndRepair(ImportCandidate candidate);
+}
+
+/// <summary>
+/// One row of a diagnostics section. <see cref="Detail"/> carries the machine
+/// facts (rule id, file, line) that used to be buried in the raw JSON dump.
+/// </summary>
+public sealed record DiagnosticLine(IssueSeverity Severity, string Title, string Detail);
+
+public sealed record DiagnosticSection(string Title, IReadOnlyList<DiagnosticLine> Lines, string EmptyText);
+
+/// <summary>
+/// A reader-oriented projection of an <see cref="ImportReport"/> plus the live
+/// gate audit. The window only lays this out, so the grouping and the wording
+/// stay testable without a WPF host.
+/// </summary>
+public sealed record ModDiagnosticsReport(
+    string Headline,
+    IssueSeverity Severity,
+    IReadOnlyList<DiagnosticSection> Sections)
+{
+    public string ToPlainText()
+    {
+        var builder = new StringBuilder(Headline).AppendLine().AppendLine();
+        foreach (var section in Sections)
+        {
+            builder.AppendLine($"=== {section.Title} ===");
+            if (section.Lines.Count == 0)
+            {
+                builder.AppendLine(section.EmptyText);
+            }
+            else
+            {
+                foreach (var line in section.Lines)
+                {
+                    builder.AppendLine(string.IsNullOrEmpty(line.Detail)
+                        ? line.Title
+                        : $"{line.Title} — {line.Detail}");
+                }
+            }
+
+            builder.AppendLine();
+        }
+
+        return builder.ToString().TrimEnd();
+    }
+}
+
+public static class ModDiagnosticsSummarizer
+{
+    // A missing report is the normal state for mods imported before the report
+    // file existed, so it is reported as a section note rather than as an error
+    // that would make a healthy mod look broken.
+    public static ModDiagnosticsReport Build(ModManifest manifest, ImportReport? report, LiveGateAuditResult audit)
+    {
+        var issues = report?.Issues ?? [];
+        var errors = issues.Count(issue => issue.Severity == IssueSeverity.Error);
+        var warnings = issues.Count(issue => issue.Severity == IssueSeverity.Warning);
+        var severity = !audit.IsSafe || errors > 0
+            ? IssueSeverity.Error
+            : warnings > 0 ? IssueSeverity.Warning : IssueSeverity.Info;
+
+        return new ModDiagnosticsReport(
+            BuildHeadline(errors, warnings, audit),
+            severity,
+            [
+                BuildOverview(manifest, report),
+                BuildIssues(issues, report is null),
+                BuildFixes(report?.Fixes ?? manifest.AppliedFixes),
+                BuildDependencies(manifest),
+                BuildAudit(audit)
+            ]);
+    }
+
+    private static string BuildHeadline(int errors, int warnings, LiveGateAuditResult audit)
+    {
+        var parts = new List<string>();
+        if (errors > 0)
+        {
+            parts.Add($"{errors} 个错误");
+        }
+
+        if (warnings > 0)
+        {
+            parts.Add($"{warnings} 个警告");
+        }
+
+        if (!audit.IsSafe)
+        {
+            parts.Add("门控审计未通过");
+        }
+
+        return parts.Count == 0 ? "校验通过 · 未发现问题" : string.Join(" · ", parts);
+    }
+
+    private static DiagnosticSection BuildOverview(ModManifest manifest, ImportReport? report)
+    {
+        var lines = new List<DiagnosticLine>
+        {
+            new(IssueSeverity.Info, "导入状态", DescribeStatus(report?.Status ?? manifest.ImportStatus)),
+            new(IssueSeverity.Info, "实时能力", DescribeCapability(manifest)),
+            new(IssueSeverity.Info, "导入时间", manifest.ImportedAt.ToLocalTime().ToString(LogEntry.TimestampFormat, CultureInfo.CurrentCulture))
+        };
+
+        if (report is not null && !string.IsNullOrWhiteSpace(report.CandidateRoot))
+        {
+            lines.Add(new DiagnosticLine(IssueSeverity.Info, "压缩包内路径", report.CandidateRoot));
+        }
+
+        // Older reports can carry a blank hash, so a blank report value must not
+        // shadow the manifest value that the library actually recorded.
+        var hash = string.IsNullOrWhiteSpace(report?.SourceSha256) ? manifest.SourceSha256 : report!.SourceSha256;
+        if (!string.IsNullOrWhiteSpace(hash))
+        {
+            lines.Add(new DiagnosticLine(IssueSeverity.Info, "来源校验值", hash.Length > 16 ? hash[..16] + "…" : hash));
+        }
+
+        return new DiagnosticSection("概览", lines, string.Empty);
+    }
+
+    private static DiagnosticSection BuildIssues(IReadOnlyList<ValidationIssue> issues, bool reportMissing)
+    {
+        var lines = issues
+            .OrderByDescending(issue => issue.Severity)
+            .Select(issue => new DiagnosticLine(
+                issue.Severity,
+                issue.Message,
+                DescribeIssueDetail(issue)))
+            .ToList();
+
+        return new DiagnosticSection(
+            "校验问题",
+            lines,
+            reportMissing ? "没有找到导入报告，此 Mod 可能在报告机制之前导入。" : "没有发现校验问题。");
+    }
+
+    private static DiagnosticSection BuildFixes(IReadOnlyList<AppliedFix> fixes)
+    {
+        var lines = fixes
+            .Select(fix => new DiagnosticLine(
+                IssueSeverity.Info,
+                $"{fix.RuleId} · {fix.File}:{fix.Line}",
+                $"{Shorten(fix.Before)} → {Shorten(fix.After)}"))
+            .ToList();
+
+        return new DiagnosticSection("自动修复", lines, "导入时没有改写任何文件。");
+    }
+
+    private static DiagnosticSection BuildDependencies(ModManifest manifest)
+    {
+        var lines = manifest.Dependencies
+            .Select(dependency => new DiagnosticLine(IssueSeverity.Info, dependency, string.Empty))
+            .ToList();
+
+        return new DiagnosticSection("依赖声明", lines, "没有声明依赖。");
+    }
+
+    private static DiagnosticSection BuildAudit(LiveGateAuditResult audit)
+    {
+        var lines = audit.IsSafe
+            ? [new DiagnosticLine(IssueSeverity.Info, "通过：所有可执行段均受禁用条件控制。", string.Empty)]
+            : audit.Issues
+                .Select(issue => new DiagnosticLine(IssueSeverity.Error, issue, string.Empty))
+                .ToList();
+
+        return new DiagnosticSection("实时门控审计", lines, "没有可审计的内容。");
+    }
+
+    private static string DescribeIssueDetail(ValidationIssue issue)
+    {
+        var parts = new List<string>();
+        if (!string.IsNullOrWhiteSpace(issue.Code))
+        {
+            parts.Add(issue.Code);
+        }
+
+        if (!string.IsNullOrWhiteSpace(issue.File))
+        {
+            parts.Add(issue.Line is null ? issue.File! : $"{issue.File}:{issue.Line}");
+        }
+
+        if (issue.Fixable)
+        {
+            parts.Add("可自动修复");
+        }
+
+        return string.Join(" · ", parts);
+    }
+
+    private static string DescribeStatus(ImportStatus status) => status switch
+    {
+        ImportStatus.Ready => "可用",
+        ImportStatus.ReadyWithFixes => "可用（已自动修复）",
+        ImportStatus.NeedsDependency => "缺少依赖",
+        _ => "已阻止"
+    };
+
+    private static string DescribeCapability(ModManifest manifest) => manifest.LiveSwitchCapability switch
+    {
+        LiveSwitchCapability.Immediate => "可实时切换",
+        LiveSwitchCapability.RequiresRestart => manifest.LiveSwitchBlockReason ?? "启动预加载后可实时切换",
+        LiveSwitchCapability.SlotUnavailable => $"实时槽位已满（{LiveModSwitchService.MaximumSlots} / {LiveModSwitchService.MaximumSlots}）",
+        LiveSwitchCapability.Unsupported => manifest.LiveSwitchBlockReason ?? "门控审计未通过",
+        _ => "需要安全重载"
+    };
+
+    private static string Shorten(string value)
+    {
+        var single = value.Replace("\r", string.Empty).Replace('\n', ' ').Trim();
+        return single.Length > 72 ? single[..72] + "…" : single;
+    }
 }
 
 public sealed class ModValidator : IModValidator

@@ -75,6 +75,41 @@ public sealed class RealtimeSwitchTests : IDisposable
     }
 
     [Fact]
+    public void SlotOccupancyCountsUsedSlotsAndLeavesHeadroomVisible()
+    {
+        var manifests = Enumerable.Range(0, 3).Select(index => CreateDirectManifest($"Headroom {index}")).ToList();
+        var service = new LiveModSwitchService(_paths);
+        service.PrepareAll(manifests);
+
+        var occupancy = service.GetSlotOccupancy(manifests);
+
+        Assert.Equal(3, occupancy.UsedSlots);
+        Assert.Equal(LiveModSwitchService.MaximumSlots, occupancy.TotalSlots);
+        Assert.Equal(LiveModSwitchService.MaximumSlots - 3, occupancy.FreeSlots);
+        Assert.Equal(0, occupancy.WaitingForSlot);
+        Assert.False(occupancy.IsFull);
+        Assert.Equal($"实时槽位 3 / {LiveModSwitchService.MaximumSlots}", occupancy.DisplayText);
+    }
+
+    [Fact]
+    public void SlotOccupancyReportsFullPoolAndModsWaitingForAReload()
+    {
+        var manifests = Enumerable.Range(0, 50).Select(index => CreateDirectManifest($"Crowded {index}")).ToList();
+        var service = new LiveModSwitchService(_paths);
+        service.PrepareAll(manifests);
+
+        var occupancy = service.GetSlotOccupancy(manifests);
+
+        Assert.Equal(LiveModSwitchService.MaximumSlots, occupancy.UsedSlots);
+        Assert.Equal(0, occupancy.FreeSlots);
+        Assert.True(occupancy.IsFull);
+        Assert.Equal(2, occupancy.WaitingForSlot);
+        Assert.Contains($"{LiveModSwitchService.MaximumSlots} / {LiveModSwitchService.MaximumSlots}", occupancy.DisplayText, StringComparison.Ordinal);
+        Assert.Contains("2 个待重载", occupancy.DisplayText, StringComparison.Ordinal);
+        Assert.DoesNotContain("F", occupancy.DisplayText, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void SameCharacterSingleSelectDoesNotDisableFramework()
     {
         var library = NewLibrary();
@@ -224,6 +259,70 @@ public sealed class RealtimeSwitchTests : IDisposable
 
         Assert.Equal("PREVIEW.PNG", manifest.PreviewFile);
         Assert.Equal("alice", CharacterGroupDetector.DetectInfo(manifest, Path.Combine(_paths.ModsRoot, manifest.InstalledDirectory)).Key);
+    }
+
+    [Fact]
+    public void PreviewIsDetectedForNonPngFormats()
+    {
+        var manifest = CreateDirectManifest("Alice Jpeg");
+        File.WriteAllBytes(Path.Combine(_paths.ModsRoot, manifest.InstalledDirectory, "preview.jpg"), [1, 2, 3]);
+
+        new LiveModSwitchService(_paths).PrepareAll([manifest]);
+
+        Assert.Equal("preview.jpg", manifest.PreviewFile);
+    }
+
+    [Fact]
+    public void PreviewIsDetectedInsideSubdirectoriesAsRelativePath()
+    {
+        var manifest = CreateDirectManifest("Alice Nested");
+        var nested = Path.Combine(_paths.ModsRoot, manifest.InstalledDirectory, "images");
+        Directory.CreateDirectory(nested);
+        File.WriteAllBytes(Path.Combine(nested, "preview.webp"), [1, 2, 3]);
+
+        new LiveModSwitchService(_paths).PrepareAll([manifest]);
+
+        Assert.Equal(Path.Combine("images", "preview.webp"), manifest.PreviewFile);
+    }
+
+    [Fact]
+    public void RootPreviewWinsOverNestedAndUnnamedCandidates()
+    {
+        var manifest = CreateDirectManifest("Alice Ranked");
+        var root = Path.Combine(_paths.ModsRoot, manifest.InstalledDirectory);
+        var nested = Path.Combine(root, "images");
+        Directory.CreateDirectory(nested);
+        File.WriteAllBytes(Path.Combine(nested, "preview.png"), [1, 2, 3]);
+        File.WriteAllBytes(Path.Combine(root, "screenshot.jpg"), [1, 2, 3]);
+        File.WriteAllBytes(Path.Combine(root, "preview.jpeg"), [1, 2, 3]);
+
+        new LiveModSwitchService(_paths).PrepareAll([manifest]);
+
+        Assert.Equal("preview.jpeg", manifest.PreviewFile);
+    }
+
+    [Fact]
+    public void SingleRootImageIsUsedEvenWithoutThePreviewName()
+    {
+        var manifest = CreateDirectManifest("Alice Unnamed");
+        File.WriteAllBytes(Path.Combine(_paths.ModsRoot, manifest.InstalledDirectory, "showcase.png"), [1, 2, 3]);
+
+        new LiveModSwitchService(_paths).PrepareAll([manifest]);
+
+        Assert.Equal("showcase.png", manifest.PreviewFile);
+    }
+
+    [Fact]
+    public void DeepTexturesAreNotMistakenForPreviews()
+    {
+        var manifest = CreateDirectManifest("Alice Textures");
+        var textures = Path.Combine(_paths.ModsRoot, manifest.InstalledDirectory, "Textures");
+        Directory.CreateDirectory(textures);
+        File.WriteAllBytes(Path.Combine(textures, "HairDiffuse.png"), [1, 2, 3]);
+
+        new LiveModSwitchService(_paths).PrepareAll([manifest]);
+
+        Assert.Null(manifest.PreviewFile);
     }
 
     [Fact]

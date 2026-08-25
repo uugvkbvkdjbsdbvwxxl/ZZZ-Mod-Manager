@@ -15,6 +15,23 @@ public sealed record LivePreparationSummary(
 
 public sealed record LiveGateAuditResult(bool IsSafe, IReadOnlyList<string> Issues);
 
+/// <summary>
+/// Reports how much of the live-switch slot pool is currently taken. The pool is
+/// the reason a mod can be downgraded to <see cref="LiveSwitchCapability.SlotUnavailable"/>,
+/// so the count has to reach the shell; the slot index itself stays hidden
+/// because it maps to manager-owned virtual keys, not to physical ones.
+/// </summary>
+public sealed record LiveSlotOccupancy(int UsedSlots, int TotalSlots, int WaitingForSlot)
+{
+    public int FreeSlots => Math.Max(0, TotalSlots - UsedSlots);
+
+    public bool IsFull => FreeSlots == 0;
+
+    public string DisplayText => WaitingForSlot > 0
+        ? $"实时槽位 {UsedSlots} / {TotalSlots}（{WaitingForSlot} 个待重载）"
+        : $"实时槽位 {UsedSlots} / {TotalSlots}";
+}
+
 public interface ILiveModSwitchService
 {
     LivePreparationSummary PrepareAll(IEnumerable<ModManifest> manifests);
@@ -25,6 +42,7 @@ public interface ILiveModSwitchService
     bool RequiresStartupPreload(ModManifest manifest);
     GameKeyChord GetStateChord(ModManifest manifest, bool enabled);
     string GetDisplayBinding(ModManifest manifest, bool enabled);
+    LiveSlotOccupancy GetSlotOccupancy(IEnumerable<ModManifest> manifests);
 }
 
 /// <summary>
@@ -226,7 +244,7 @@ public sealed class LiveModSwitchService : ILiveModSwitchService
             };
         }
 
-        manifest.PreviewFile = FindRootPreview(root);
+        manifest.PreviewFile = ModPreviewLocator.Find(root);
         return changed;
     }
 
@@ -277,7 +295,7 @@ public sealed class LiveModSwitchService : ILiveModSwitchService
             LiveSwitchCapability.Unsupported => "门控审计未通过 · 需要安全重载",
             _ => null
         };
-        manifest.PreviewFile = FindRootPreview(root);
+        manifest.PreviewFile = ModPreviewLocator.Find(root);
         return changed;
     }
 
@@ -377,6 +395,23 @@ public sealed class LiveModSwitchService : ILiveModSwitchService
         _ = enabled;
         _ = slot;
         return "管理器内部控制（无需物理按键）";
+    }
+
+    // Occupancy is derived from the manifests instead of a cached counter so the
+    // shell can never show a stale figure after a slot is reclaimed by PrepareAll.
+    public LiveSlotOccupancy GetSlotOccupancy(IEnumerable<ModManifest> manifests)
+    {
+        var materialized = manifests as IReadOnlyCollection<ModManifest> ?? manifests.ToList();
+        var used = materialized
+            .Where(manifest => manifest.LiveSwitchSlot is int slot && slot is >= 0 and < MaximumSlots)
+            .Select(manifest => manifest.LiveSwitchSlot!.Value)
+            .Distinct()
+            .Count();
+
+        return new LiveSlotOccupancy(
+            used,
+            MaximumSlots,
+            materialized.Count(manifest => manifest.LiveSwitchCapability == LiveSwitchCapability.SlotUnavailable));
     }
 
     public string GetModPath(ModManifest manifest)
@@ -1053,21 +1088,6 @@ public sealed class LiveModSwitchService : ILiveModSwitchService
 
     private static string GetQualifiedVariable(ModManifest manifest) =>
         "$\\" + GetControlNamespace(manifest) + "\\enabled";
-
-    private static string? FindRootPreview(string root)
-    {
-        try
-        {
-            return Directory.EnumerateFiles(root, "*", SearchOption.TopDirectoryOnly)
-                .FirstOrDefault(path => string.Equals(Path.GetFileName(path), "preview.png", StringComparison.OrdinalIgnoreCase)) is { } preview
-                ? Path.GetFileName(preview)
-                : null;
-        }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
-        {
-            return null;
-        }
-    }
 
     private static List<string> ReadLines(string path)
     {

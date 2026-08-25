@@ -526,6 +526,14 @@ public partial class MainWindow
         }
     }
 
+    private void LogLevelFilter_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (_logger is not null)
+        {
+            RefreshLogs();
+        }
+    }
+
     private void RefreshLogs_Click(object sender, RoutedEventArgs e)
     {
         _logger.Reload();
@@ -551,17 +559,25 @@ public partial class MainWindow
     private void RefreshLogs()
     {
         var filter = LogSearchBox?.Text.Trim() ?? string.Empty;
-        if (LogRetentionText is not null)
-        {
-            LogRetentionText.Text = $"自动保留最近 {AppLogger.MaximumEntries} 条；启动、刷新和日志达到上限时会自动清理。";
-        }
+        var level = SelectedLogLevelFilter();
 
         _visibleLogs.Clear();
         foreach (var entry in _logger.Entries.Where(entry =>
-                     string.IsNullOrWhiteSpace(filter)
-                     || entry.Message.Contains(filter, StringComparison.CurrentCultureIgnoreCase)))
+                     (level is null || entry.Level == level)
+                     && (string.IsNullOrWhiteSpace(filter)
+                         || entry.Message.Contains(filter, StringComparison.CurrentCultureIgnoreCase))))
         {
             _visibleLogs.Add(new LogRow(entry));
+        }
+
+        if (LogRetentionText is not null)
+        {
+            var retention = $"自动保留最近 {AppLogger.MaximumEntries} 条；启动、刷新和日志达到上限时会自动清理。";
+            // The filter can hide every entry, and an empty list with no explanation reads
+            // as "nothing was ever logged" instead of "your filter matched nothing".
+            LogRetentionText.Text = level is null && string.IsNullOrWhiteSpace(filter)
+                ? retention
+                : $"{retention}    ·    当前筛选命中 {_visibleLogs.Count} / {_logger.Entries.Count} 条。";
         }
 
         if (_visibleLogs.Count > 0)
@@ -569,6 +585,15 @@ public partial class MainWindow
             LogListBox.ScrollIntoView(_visibleLogs[^1]);
         }
     }
+
+    private AppLogLevel? SelectedLogLevelFilter() =>
+        ((LogLevelFilterCombo?.SelectedItem as ComboBoxItem)?.Tag as string) switch
+        {
+            "Info" => AppLogLevel.Info,
+            "Warning" => AppLogLevel.Warning,
+            "Error" => AppLogLevel.Error,
+            _ => null
+        };
 
     private void CopyLogs_Click(object sender, RoutedEventArgs e)
     {

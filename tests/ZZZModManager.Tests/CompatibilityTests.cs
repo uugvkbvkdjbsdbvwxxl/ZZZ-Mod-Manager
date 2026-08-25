@@ -190,6 +190,57 @@ endif
     }
 
     [Fact]
+    public void OverlapDetectionReportsBothDirectionsAndIgnoresEnabledState()
+    {
+        var first = new ModManifest
+        {
+            Id = "first",
+            DisplayName = "First",
+            Enabled = false,
+            Hashes = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "AABBCCDD", "11223344" }
+        };
+        var second = new ModManifest
+        {
+            Id = "second",
+            DisplayName = "Second",
+            Enabled = false,
+            Hashes = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "aabbccdd" }
+        };
+        var unrelated = new ModManifest
+        {
+            Id = "third",
+            DisplayName = "Third",
+            Hashes = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "deadbeef" }
+        };
+
+        var overlaps = new ConflictDetector().FindOverlaps([first, second, unrelated]);
+
+        Assert.Equal(2, overlaps.Count);
+        Assert.Equal("Second", Assert.Single(overlaps.Single(item => item.Mod.Id == "first").Conflicts).DisplayName);
+        Assert.Equal("First", Assert.Single(overlaps.Single(item => item.Mod.Id == "second").Conflicts).DisplayName);
+        Assert.DoesNotContain(overlaps, item => item.Mod.Id == "third");
+    }
+
+    [Fact]
+    public async Task LibraryOverlapMapSurfacesConflictPeersForTheCardView()
+    {
+        var importer = new ModImporter(_paths);
+        var first = await importer.StageAsync(CreateMod("First"));
+        var second = await importer.StageAsync(CreateMod("Second"));
+        var validator = new ModValidator(_paths);
+        var firstCandidate = Assert.Single(first.Candidates);
+        var secondCandidate = Assert.Single(second.Candidates);
+        var library = new ModLibrary(_paths, new JsonFileStore(), new ConflictDetector());
+        var firstManifest = library.Install(firstCandidate, validator.ValidateAndRepair(firstCandidate));
+        var secondManifest = library.Install(secondCandidate, validator.ValidateAndRepair(secondCandidate));
+
+        var map = library.GetOverlapMap();
+
+        Assert.Equal(secondManifest.Id, Assert.Single(map[firstManifest.Id]).Id);
+        Assert.Equal(firstManifest.Id, Assert.Single(map[secondManifest.Id]).Id);
+    }
+
+    [Fact]
     public void LibraryDetectsSameArchiveOptionalComponentsAsOneSplitPackage()
     {
         var library = new ModLibrary(_paths, new JsonFileStore(), new ConflictDetector());
@@ -876,6 +927,91 @@ filename = body.buf
         Assert.Equal(AppLogger.MaximumEntries, logger.Entries.Count);
         Assert.Equal("history 25", logger.Entries[0].Message);
         Assert.Equal(AppLogger.MaximumEntries, File.ReadAllLines(path, Encoding.UTF8).Length);
+    }
+
+    [Fact]
+    public void DiagnosticsSummarizerCountsIssuesAndPutsErrorsFirst()
+    {
+        var manifest = new ModManifest
+        {
+            Id = "Velina",
+            DisplayName = "Velina",
+            InstalledDirectory = "Velina",
+            ImportStatus = ImportStatus.ReadyWithFixes,
+            LiveSwitchCapability = LiveSwitchCapability.Immediate,
+            SourceSha256 = "0123456789abcdef0123456789abcdef"
+        };
+        var report = new ImportReport
+        {
+            Status = ImportStatus.ReadyWithFixes,
+            Issues =
+            [
+                new ValidationIssue { Severity = IssueSeverity.Warning, Code = "STALE_BUFFER", Message = "存在过期缓冲" },
+                new ValidationIssue { Severity = IssueSeverity.Error, Code = "MISSING_USED_FILE", Message = "缺少引用文件", File = "Velina.ini", Line = 42, Fixable = true }
+            ],
+            Fixes = [new AppliedFix { RuleId = "normalize-trailing-cycle-value", File = "Velina.ini", Line = 7, Before = "$cycle = 3", After = "$cycle = 2" }]
+        };
+
+        var diagnostics = ModDiagnosticsSummarizer.Build(manifest, report, new LiveGateAuditResult(true, []));
+
+        Assert.Equal("1 个错误 · 1 个警告", diagnostics.Headline);
+        Assert.Equal(IssueSeverity.Error, diagnostics.Severity);
+        var issues = diagnostics.Sections.Single(section => section.Title == "校验问题");
+        Assert.Equal(IssueSeverity.Error, issues.Lines[0].Severity);
+        Assert.Equal("缺少引用文件", issues.Lines[0].Title);
+        Assert.Equal("MISSING_USED_FILE · Velina.ini:42 · 可自动修复", issues.Lines[0].Detail);
+        Assert.Equal(IssueSeverity.Warning, issues.Lines[1].Severity);
+        var fixes = diagnostics.Sections.Single(section => section.Title == "自动修复");
+        Assert.Equal("normalize-trailing-cycle-value · Velina.ini:7", Assert.Single(fixes.Lines).Title);
+        Assert.Contains("来源校验值", diagnostics.ToPlainText());
+    }
+
+    [Fact]
+    public void DiagnosticsSummarizerExplainsAMissingReportInsteadOfLookingBroken()
+    {
+        var manifest = new ModManifest
+        {
+            Id = "Legacy",
+            DisplayName = "Legacy",
+            InstalledDirectory = "Legacy",
+            ImportStatus = ImportStatus.Ready,
+            LiveSwitchCapability = LiveSwitchCapability.Immediate
+        };
+
+        var diagnostics = ModDiagnosticsSummarizer.Build(manifest, null, new LiveGateAuditResult(true, []));
+
+        Assert.Equal("校验通过 · 未发现问题", diagnostics.Headline);
+        Assert.Equal(IssueSeverity.Info, diagnostics.Severity);
+        var issues = diagnostics.Sections.Single(section => section.Title == "校验问题");
+        Assert.Empty(issues.Lines);
+        Assert.Equal("没有找到导入报告，此 Mod 可能在报告机制之前导入。", issues.EmptyText);
+        Assert.Equal("导入时没有改写任何文件。", diagnostics.Sections.Single(section => section.Title == "自动修复").EmptyText);
+    }
+
+    [Fact]
+    public void DiagnosticsSummarizerEscalatesWhenTheLiveGateAuditFails()
+    {
+        var manifest = new ModManifest
+        {
+            Id = "Unsafe",
+            DisplayName = "Unsafe",
+            InstalledDirectory = "Unsafe",
+            ImportStatus = ImportStatus.Ready,
+            LiveSwitchCapability = LiveSwitchCapability.Unsupported,
+            LiveSwitchBlockReason = "存在无条件执行段"
+        };
+
+        var diagnostics = ModDiagnosticsSummarizer.Build(
+            manifest,
+            new ImportReport { Status = ImportStatus.Ready },
+            new LiveGateAuditResult(false, ["Velina.ini:12 存在无条件 run"]));
+
+        Assert.Equal("门控审计未通过", diagnostics.Headline);
+        Assert.Equal(IssueSeverity.Error, diagnostics.Severity);
+        var audit = diagnostics.Sections.Single(section => section.Title == "实时门控审计");
+        Assert.Equal(IssueSeverity.Error, Assert.Single(audit.Lines).Severity);
+        Assert.Equal("Velina.ini:12 存在无条件 run", audit.Lines[0].Title);
+        Assert.Contains("存在无条件执行段", diagnostics.Sections.Single(section => section.Title == "概览").Lines.Select(line => line.Detail));
     }
 
     [Fact]

@@ -242,6 +242,8 @@
                                                                                    Foreground="{Binding CapabilityBrush}" TextWrapping="Wrap" />
                                                                         <TextBlock Text="{Binding DependencyText}" Margin="0,3,0,0" FontSize="11"
                                                                                    Foreground="{DynamicResource WarningBrush}" TextWrapping="Wrap" />
+                                                                        <TextBlock Text="{Binding ConflictText}" Margin="0,3,0,0" FontSize="11"
+                                                                                   Foreground="{Binding ConflictBrush}" TextWrapping="Wrap" />
                                                                         <TextBlock Text="{Binding RuntimeMessage}" Margin="0,3,0,0" FontSize="11"
                                                                                    Foreground="{DynamicResource InfoBrush}" TextWrapping="Wrap" />
                                                                     </StackPanel>
@@ -472,8 +474,17 @@
                             <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
                                 <TextBlock Text="搜索" Foreground="{DynamicResource SecondaryTextBrush}"
                                            VerticalAlignment="Center" Margin="3,0,5,0" />
-                                <TextBox x:Name="LogSearchBox" Width="260" ToolTip="搜索日志内容或级别"
+                                <TextBox x:Name="LogSearchBox" Width="208" ToolTip="搜索日志内容；级别请用右侧筛选"
                                          TextChanged="LogSearchBox_TextChanged" />
+                                <TextBlock Text="级别" Foreground="{DynamicResource SecondaryTextBrush}"
+                                           VerticalAlignment="Center" Margin="10,0,5,0" />
+                                <ComboBox x:Name="LogLevelFilterCombo" Width="104" ToolTip="只显示选中级别的日志"
+                                          SelectionChanged="LogLevelFilter_SelectionChanged" SelectedIndex="0">
+                                    <ComboBoxItem Tag="All" Content="全部级别" />
+                                    <ComboBoxItem Tag="Info" Content="信息" />
+                                    <ComboBoxItem Tag="Warning" Content="警告" />
+                                    <ComboBoxItem Tag="Error" Content="错误" />
+                                </ComboBox>
                             </StackPanel>
                             <Button Grid.Column="1" Style="{StaticResource UtilityButton}" Content="复制" Click="CopyLogs_Click" />
                             <Button Grid.Column="2" Style="{StaticResource UtilityButton}" Content="刷新" Click="RefreshLogs_Click" />

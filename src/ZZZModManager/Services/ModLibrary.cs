@@ -6,6 +6,7 @@ namespace ZZZModManager.Services;
 public interface IConflictDetector
 {
     IReadOnlyList<ModManifest> FindConflicts(ModManifest candidate, IEnumerable<ModManifest> enabledMods);
+    IReadOnlyList<ConflictResult> FindOverlaps(IEnumerable<ModManifest> installedMods);
 }
 
 public sealed class ConflictDetector : IConflictDetector
@@ -16,6 +17,67 @@ public sealed class ConflictDetector : IConflictDetector
             .Where(mod => mod.Enabled)
             .Where(mod => mod.Hashes.Overlaps(candidate.Hashes))
             .ToList();
+
+    /// <summary>
+    /// Reports every hash overlap in the library, including pairs that are not currently
+    /// enabled. <see cref="FindConflicts"/> deliberately looks only at enabled mods because
+    /// it drives auto-disable, but the card view has to warn *before* a user enables a mod,
+    /// so display needs the installation-wide picture and decides urgency itself.
+    /// </summary>
+    public IReadOnlyList<ConflictResult> FindOverlaps(IEnumerable<ModManifest> installedMods)
+    {
+        var mods = installedMods.ToList();
+
+        // Bucketing by hash keeps this proportional to the overlaps that exist instead of
+        // comparing every pair: a 300-mod library would otherwise do ~45k set intersections
+        // on every view refresh.
+        var byHash = new Dictionary<string, List<ModManifest>>(StringComparer.OrdinalIgnoreCase);
+        foreach (var mod in mods)
+        {
+            foreach (var hash in mod.Hashes)
+            {
+                if (!byHash.TryGetValue(hash, out var bucket))
+                {
+                    bucket = [];
+                    byHash[hash] = bucket;
+                }
+
+                bucket.Add(mod);
+            }
+        }
+
+        var results = new List<ConflictResult>();
+        foreach (var mod in mods)
+        {
+            var peers = new Dictionary<string, ModManifest>(StringComparer.OrdinalIgnoreCase);
+            foreach (var hash in mod.Hashes)
+            {
+                if (!byHash.TryGetValue(hash, out var bucket))
+                {
+                    continue;
+                }
+
+                foreach (var peer in bucket.Where(peer =>
+                             !string.Equals(peer.Id, mod.Id, StringComparison.OrdinalIgnoreCase)))
+                {
+                    peers[peer.Id] = peer;
+                }
+            }
+
+            if (peers.Count > 0)
+            {
+                results.Add(new ConflictResult
+                {
+                    Mod = mod,
+                    Conflicts = peers.Values
+                        .OrderBy(peer => peer.DisplayName, StringComparer.CurrentCultureIgnoreCase)
+                        .ToList()
+                });
+            }
+        }
+
+        return results;
+    }
 }
 
 public interface IModLibrary
@@ -38,6 +100,7 @@ public interface IModLibrary
     void SaveChanges();
     string GetAbsolutePath(ModManifest manifest);
     IReadOnlyList<ModManifest> FindConflicts(ModManifest candidate);
+    IReadOnlyDictionary<string, IReadOnlyList<ModManifest>> GetOverlapMap();
 }
 
 public sealed class ModLibrary : IModLibrary
@@ -504,6 +567,14 @@ public sealed class ModLibrary : IModLibrary
 
     public IReadOnlyList<ModManifest> FindConflicts(ModManifest candidate) =>
         _conflictDetector.FindConflicts(candidate, _state.Mods);
+
+    public IReadOnlyDictionary<string, IReadOnlyList<ModManifest>> GetOverlapMap() =>
+        _conflictDetector
+            .FindOverlaps(_state.Mods)
+            .ToDictionary(
+                result => result.Mod.Id,
+                result => (IReadOnlyList<ModManifest>)result.Conflicts,
+                StringComparer.OrdinalIgnoreCase);
 
     private ModLibraryBatchResult ApplyRequests(IEnumerable<ModStateRequest> requests, bool keepLoaded)
     {
