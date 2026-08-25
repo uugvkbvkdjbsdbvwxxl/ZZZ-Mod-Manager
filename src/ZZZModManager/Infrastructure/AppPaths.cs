@@ -13,6 +13,10 @@ public sealed class AppPaths
     public string ConfigFile => Path.Combine(Root, "config.json");
     public string LibraryFile => Path.Combine(Root, "library.json");
     public string RuntimeManifestFile => Path.Combine(Root, "runtime-manifest.json");
+    public string PresetsFile => Path.Combine(Root, "presets.json");
+    // The character roster is data, not code: keeping it beside the library lets
+    // users add new characters without waiting for a manager release.
+    public string CharacterTableFile => Path.Combine(Root, "characters.json");
 
     public AppPaths(string? root = null)
     {

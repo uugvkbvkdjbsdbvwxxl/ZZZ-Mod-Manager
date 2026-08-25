@@ -43,7 +43,11 @@ public sealed class UiStructureTests
                      "LightboxOverlay", "LightboxImage", "LightboxZoomSlider",
                      "BackgroundImage", "BackgroundVeil", "ThemeComboBox",
                      "SidebarOpacitySlider", "PanelOpacitySlider", "BackgroundOpacitySlider",
-                     "ModRootBox", "ModRootHintText"
+                     "ModRootBox", "ModRootHintText",
+                     "PresetCombo", "ApplyPresetButton", "SavePresetButton", "DeletePresetButton",
+                     "MultiSelectToggle", "CardSelectCheckBox", "BatchActionBar", "BatchSelectionText",
+                     "BatchEnableButton", "BatchDisableButton", "BatchSavePresetButton",
+                     "BatchSelectVisibleButton", "BatchClearButton"
                  })
         {
             Assert.Contains(name, names);
@@ -396,6 +400,93 @@ public sealed class UiStructureTests
         var dependency = document.Descendants(PresentationNamespace + "TextBlock")
             .Single(element => (string?)element.Attribute("Text") == "{Binding DependencyText}");
         Assert.Same(dependency.Parent, conflict.Parent);
+    }
+
+    [Fact]
+    public void PresetToolbarKeepsOneApplyActionNextToItsQuietManagementButtons()
+    {
+        var document = LoadFixture("MainWindow.xaml");
+        var combo = document.Descendants(PresentationNamespace + "ComboBox")
+            .Single(element => (string?)element.Attribute(XamlNamespace + "Name") == "PresetCombo");
+
+        Assert.Equal("PresetCombo_SelectionChanged", (string?)combo.Attribute("SelectionChanged"));
+        Assert.Equal("Name", (string?)combo.Attribute("DisplayMemberPath"));
+
+        var row = combo.Parent!;
+        Assert.Equal("Grid", row.Name.LocalName);
+
+        var buttons = row.Elements(PresentationNamespace + "Button")
+            .ToDictionary(
+                button => (string?)button.Attribute(XamlNamespace + "Name") ?? string.Empty,
+                button => button,
+                StringComparer.Ordinal);
+
+        Assert.Equal("ApplyPreset_Click", (string?)buttons["ApplyPresetButton"].Attribute("Click"));
+        Assert.Equal("{StaticResource PrimaryButton}", (string?)buttons["ApplyPresetButton"].Attribute("Style"));
+        Assert.Equal("SavePreset_Click", (string?)buttons["SavePresetButton"].Attribute("Click"));
+        Assert.Equal("DeletePreset_Click", (string?)buttons["DeletePresetButton"].Attribute("Click"));
+
+        // Only the apply action may look primary; the rest stay quiet.
+        Assert.Equal(
+            1,
+            buttons.Values.Count(button => (string?)button.Attribute("Style") == "{StaticResource PrimaryButton}"));
+
+        var toggle = row.Elements(PresentationNamespace + "CheckBox")
+            .Single(element => (string?)element.Attribute(XamlNamespace + "Name") == "MultiSelectToggle");
+        Assert.Equal("MultiSelectToggle_Click", (string?)toggle.Attribute("Click"));
+        Assert.False(string.IsNullOrWhiteSpace((string?)toggle.Attribute("Content")));
+    }
+
+    [Fact]
+    public void BatchActionBarStaysHiddenUntilMultiSelectModeAndCarriesEveryBatchHandler()
+    {
+        var document = LoadFixture("MainWindow.xaml");
+        var bar = document.Descendants(PresentationNamespace + "Border")
+            .Single(element => (string?)element.Attribute(XamlNamespace + "Name") == "BatchActionBar");
+
+        Assert.Equal("Collapsed", (string?)bar.Attribute("Visibility"));
+        Assert.Equal("Bottom", (string?)bar.Attribute("VerticalAlignment"));
+
+        // The bar floats over the same region as the empty state instead of pushing the grid around.
+        var emptyState = document.Descendants(PresentationNamespace + "Border")
+            .Single(element => (string?)element.Attribute(XamlNamespace + "Name") == "EmptyStateBorder");
+        Assert.Same(emptyState.Parent, bar.Parent);
+
+        var handlers = bar.Descendants(PresentationNamespace + "Button")
+            .ToDictionary(
+                button => (string?)button.Attribute(XamlNamespace + "Name") ?? string.Empty,
+                button => (string?)button.Attribute("Click"),
+                StringComparer.Ordinal);
+
+        Assert.Equal("BatchEnable_Click", handlers["BatchEnableButton"]);
+        Assert.Equal("BatchDisable_Click", handlers["BatchDisableButton"]);
+        Assert.Equal("BatchSavePreset_Click", handlers["BatchSavePresetButton"]);
+        Assert.Equal("BatchSelectVisible_Click", handlers["BatchSelectVisibleButton"]);
+        Assert.Equal("BatchClearSelection_Click", handlers["BatchClearButton"]);
+
+        var count = bar.Descendants(PresentationNamespace + "TextBlock")
+            .Single(element => (string?)element.Attribute(XamlNamespace + "Name") == "BatchSelectionText");
+        Assert.False(string.IsNullOrWhiteSpace((string?)count.Attribute("Text")));
+    }
+
+    [Fact]
+    public void CardSelectionCheckBoxSitsOutsideThePreviewButtonSoClicksAreNotSwallowed()
+    {
+        var document = LoadFixture("MainWindow.xaml");
+        var checkBox = document.Descendants(PresentationNamespace + "CheckBox")
+            .Single(element => (string?)element.Attribute(XamlNamespace + "Name") == "CardSelectCheckBox");
+
+        Assert.Equal("CardSelect_Click", (string?)checkBox.Attribute("Click"));
+        Assert.Equal("{Binding}", (string?)checkBox.Attribute("Tag"));
+        Assert.Equal("{Binding IsSelected, Mode=OneWay}", (string?)checkBox.Attribute("IsChecked"));
+
+        Assert.DoesNotContain(
+            checkBox.Ancestors(),
+            element => element.Name.LocalName == "Button");
+
+        var host = checkBox.Parent!;
+        Assert.Equal("Border", host.Name.LocalName);
+        Assert.Equal("{Binding SelectionVisibility}", (string?)host.Attribute("Visibility"));
     }
 
     private static XDocument LoadFixture(string fileName)

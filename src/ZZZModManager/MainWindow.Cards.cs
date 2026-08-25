@@ -19,6 +19,8 @@ public partial class MainWindow
     {
         _library.GetAvailableCharacterGroups();
         var manifests = _library.GetAll().ToList();
+        // 删除或改名后的 Mod 不应继续占着勾选位，否则批量操作会对着不存在的 Id 报错。
+        _selectedModIds.IntersectWith(manifests.Select(manifest => manifest.Id));
         var missingByMod = _dependencyResolver.GetMissingDependencies(manifests);
         var overlapsByMod = _library.GetOverlapMap();
         var cards = manifests.Select(manifest =>
@@ -28,7 +30,16 @@ public partial class MainWindow
             var overlaps = overlapsByMod.TryGetValue(manifest.Id, out var peers) ? peers : [];
             _runtimeStates.TryGetValue(manifest.Id, out var runtimeState);
             var character = _library.DetectCharacterGroup(manifest);
-            return new ModCardViewModel(manifest, path, missing, overlaps, runtimeState, _liveSwitch, character);
+            return new ModCardViewModel(
+                manifest,
+                path,
+                missing,
+                overlaps,
+                runtimeState,
+                _liveSwitch,
+                character,
+                _multiSelectMode,
+                _selectedModIds.Contains(manifest.Id));
         }).ToList();
 
         RebuildCharacterFilters(cards);
@@ -40,6 +51,8 @@ public partial class MainWindow
             && card.MatchesStatus(status)).ToList();
 
         _visibleGroups.Clear();
+        _visibleModIds.Clear();
+        _visibleModIds.AddRange(filtered.Select(card => card.Manifest.Id));
         foreach (var group in filtered
                      .GroupBy(card => card.Character.Key, StringComparer.OrdinalIgnoreCase)
                      .Select(group => new ModGroupViewModel(group.First().Character.DisplayName, group.ToList()))
@@ -54,6 +67,7 @@ public partial class MainWindow
             ? "还没有导入 Mod；可以在设置页拖入压缩包或文件夹。"
             : "当前筛选没有结果，请清除搜索、角色或状态筛选。";
         EmptyStateBorder.Visibility = filtered.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
+        UpdateBatchBar();
 
         // 槽位池是"实时切换"能力的唯一硬上限，用满之后新 Mod 只能走安全重载；
         // 因此把占用量常驻状态栏，让用户在导入前就知道还剩多少余量。
@@ -554,6 +568,12 @@ public sealed class ModCardViewModel
     public Brush ConflictBrush { get; }
     public string RuntimeMessage { get; }
 
+    // 多选状态由窗口保存后再投影进卡片：视图模型是不可变快照，
+    // 每次 RefreshView 重建时按 Mod Id 重新读回勾选结果。
+    public bool IsSelected { get; }
+    public Visibility SelectionVisibility { get; }
+    public Brush SelectionBorderBrush => IsSelected ? ThemeBrushes.Accent : ThemeBrushes.Border;
+
     internal ModCardViewModel(
         ModManifest manifest,
         string directoryPath,
@@ -561,8 +581,12 @@ public sealed class ModCardViewModel
         IReadOnlyList<ModManifest> conflictingMods,
         RuntimeCardState? runtimeState,
         ILiveModSwitchService liveSwitch,
-        CharacterGroupInfo character)
+        CharacterGroupInfo character,
+        bool multiSelectMode = false,
+        bool isSelected = false)
     {
+        IsSelected = isSelected;
+        SelectionVisibility = multiSelectMode ? Visibility.Visible : Visibility.Collapsed;
         Manifest = manifest;
         DirectoryPath = directoryPath;
         MissingDependencies = missingDependencies;

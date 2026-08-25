@@ -9,6 +9,7 @@ public interface IGameModStateCoordinator
     void MarkControlFilesChanged();
     void PrepareForLaunch();
     ModStateChangeResult ApplyState(string modId, bool enabled, bool restoreManagerWindow, bool allowReload = true);
+    ModStateChangeResult ApplyStates(IEnumerable<ModStateRequest> requests, bool restoreManagerWindow, bool allowReload = true);
     ModStateChangeResult ReloadAndSynchronize(bool restoreManagerWindow);
 }
 
@@ -85,14 +86,35 @@ public sealed class GameModStateCoordinator : IGameModStateCoordinator
         string modId,
         bool enabled,
         bool restoreManagerWindow,
-        bool allowReload = true)
+        bool allowReload = true) =>
+        Apply(
+            [new ModStateRequest(modId, enabled)],
+            enabled ? "启用" : "禁用",
+            restoreManagerWindow,
+            allowReload);
+
+    /// <summary>
+    /// Applies a whole selection at once so a multi-select batch or a preset causes
+    /// a single safe reload instead of one reload per mod.
+    /// </summary>
+    public ModStateChangeResult ApplyStates(
+        IEnumerable<ModStateRequest> requests,
+        bool restoreManagerWindow,
+        bool allowReload = true) =>
+        Apply(requests.ToList(), "批量切换", restoreManagerWindow, allowReload);
+
+    private ModStateChangeResult Apply(
+        IReadOnlyList<ModStateRequest> requests,
+        string actionLabel,
+        bool restoreManagerWindow,
+        bool allowReload)
     {
         var pid = RefreshSession();
         var gameRunning = pid is not null;
         ModLibraryBatchResult batch;
         try
         {
-            batch = _library.ApplyStateBatch(modId, enabled, keepLoaded: gameRunning);
+            batch = _library.ApplyStateBatch(requests, keepLoaded: gameRunning);
             foreach (var manifest in batch.ChangedMods)
             {
                 _liveSwitch.SetDefault(manifest, manifest.Enabled);
@@ -127,7 +149,7 @@ public sealed class GameModStateCoordinator : IGameModStateCoordinator
 
         if (!gameRunning)
         {
-            var message = $"已保存{(enabled ? "启用" : "禁用")}状态，下次启动游戏时生效{suffix}。";
+            var message = $"已保存{actionLabel}状态，下次启动游戏时生效{suffix}。";
             _logger.Info(message);
             return new ModStateChangeResult
             {
@@ -178,7 +200,7 @@ public sealed class GameModStateCoordinator : IGameModStateCoordinator
         var immediate = SendAbsoluteStates(batch.ChangedMods, restoreManagerWindow);
         if (immediate.Succeeded)
         {
-            var message = $"{(enabled ? "启用" : "禁用")}命令已发送，状态已保存；管理器无法读取游戏渲染结果，未执行安全重载{suffix}。";
+            var message = $"{actionLabel}命令已发送，状态已保存；管理器无法读取游戏渲染结果，未执行安全重载{suffix}。";
             _logger.Info(message);
             return new ModStateChangeResult
             {

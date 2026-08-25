@@ -545,3 +545,126 @@ public sealed class GroupSelectionWindow : Window
 
     private sealed record GroupChoice(string? Key, string DisplayName, CharacterGroupKind Kind);
 }
+
+public sealed class PresetNameWindow : Window
+{
+    private readonly TextBox _name;
+    private readonly TextBlock _error;
+
+    public string PresetName { get; private set; } = string.Empty;
+
+    public PresetNameWindow(string scopeText, int modCount, string? suggestedName)
+    {
+        Title = "保存预设";
+        Width = 480;
+        Height = 260;
+        ResizeMode = ResizeMode.NoResize;
+        WindowStartupLocation = WindowStartupLocation.CenterOwner;
+        Background = (System.Windows.Media.Brush)FindResource("DialogBackgroundBrush");
+        Foreground = (System.Windows.Media.Brush)FindResource("DialogTextBrush");
+        FontFamily = new System.Windows.Media.FontFamily("Segoe UI, Microsoft YaHei UI");
+        FontSize = 13;
+
+        var root = new Grid
+        {
+            Margin = new Thickness(20),
+            Background = (System.Windows.Media.Brush)FindResource("DialogBackgroundBrush")
+        };
+        root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        root.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
+
+        root.Children.Add(new TextBlock
+        {
+            Text = "为这套启用状态起个名字",
+            FontSize = 19,
+            FontWeight = FontWeights.SemiBold
+        });
+
+        var hint = new TextBlock
+        {
+            Text = $"将把{scopeText}（{modCount} 个）记录为预设；同名预设会被覆盖。",
+            Margin = new Thickness(0, 7, 0, 12),
+            Foreground = (System.Windows.Media.Brush)FindResource("DialogMutedTextBrush"),
+            TextWrapping = TextWrapping.Wrap
+        };
+        Grid.SetRow(hint, 1);
+        root.Children.Add(hint);
+
+        _name = new TextBox
+        {
+            Height = 36,
+            Padding = new Thickness(10, 7, 10, 7),
+            VerticalContentAlignment = VerticalAlignment.Center,
+            Background = (System.Windows.Media.Brush)FindResource("DialogRaisedBrush"),
+            Foreground = (System.Windows.Media.Brush)FindResource("DialogTextBrush"),
+            BorderBrush = (System.Windows.Media.Brush)FindResource("DialogBorderBrush"),
+            Text = suggestedName ?? string.Empty,
+            ToolTip = "例如：日常队 或 剧情通关配置"
+        };
+        Grid.SetRow(_name, 2);
+        root.Children.Add(_name);
+
+        _error = new TextBlock
+        {
+            Margin = new Thickness(2, 7, 0, 0),
+            Foreground = System.Windows.Media.Brushes.Khaki,
+            TextWrapping = TextWrapping.Wrap
+        };
+        Grid.SetRow(_error, 3);
+        root.Children.Add(_error);
+
+        var buttons = new StackPanel
+        {
+            Orientation = Orientation.Horizontal,
+            HorizontalAlignment = HorizontalAlignment.Right,
+            VerticalAlignment = VerticalAlignment.Bottom,
+            Margin = new Thickness(0, 12, 0, 0)
+        };
+        var cancel = new Button
+        {
+            Content = "取消",
+            Width = 86,
+            IsCancel = true,
+            Foreground = (System.Windows.Media.Brush)FindResource("DialogTextBrush"),
+            Background = (System.Windows.Media.Brush)FindResource("DialogRaisedBrush"),
+            BorderBrush = (System.Windows.Media.Brush)FindResource("DialogBorderBrush")
+        };
+        cancel.Click += (_, _) => DialogResult = false;
+        var save = new Button
+        {
+            Content = "保存",
+            Width = 92,
+            IsDefault = true,
+            Style = (Style)FindResource("PrimaryButton")
+        };
+        // 空名字在对话框里就拦下来，避免 ModPresetStore.Save 抛异常后
+        // 走到错误弹窗——那对用户来说只是"输错了"而不是"出故障了"。
+        save.Click += (_, _) =>
+        {
+            var candidate = _name.Text.Trim();
+            if (candidate.Length == 0)
+            {
+                _error.Text = "预设名称不能为空。";
+                _name.Focus();
+                return;
+            }
+
+            PresetName = candidate;
+            DialogResult = true;
+        };
+        buttons.Children.Add(cancel);
+        buttons.Children.Add(save);
+        Grid.SetRow(buttons, 4);
+        root.Children.Add(buttons);
+        Content = root;
+
+        Loaded += (_, _) =>
+        {
+            _name.Focus();
+            _name.SelectAll();
+        };
+    }
+}

@@ -42,6 +42,7 @@ public partial class MainWindow : Window
     private readonly ModValidator _validator;
     private readonly RuntimeManager _runtime;
     private readonly ModLibrary _library;
+    private readonly ModPresetStore _presets;
     private readonly DependencyResolver _dependencyResolver;
     private readonly IGameModReloadService _gameInput;
     private readonly LiveModSwitchService _liveSwitch;
@@ -50,6 +51,7 @@ public partial class MainWindow : Window
     private readonly AppLogger _logger;
     private readonly ObservableCollection<ModGroupViewModel> _visibleGroups = [];
     private readonly ObservableCollection<CharacterFilterItem> _characterFilters = [];
+    private readonly ObservableCollection<ModPreset> _presetItems = [];
     private readonly ObservableCollection<LogRow> _visibleLogs = [];
     private readonly Dictionary<string, RuntimeCardState> _runtimeStates = new(StringComparer.OrdinalIgnoreCase);
     private readonly DispatcherTimer _statusTimer = new() { Interval = TimeSpan.FromSeconds(2) };
@@ -76,6 +78,13 @@ public partial class MainWindow : Window
     private bool _gameProcessProbeCompleted;
     private string _selectedCharacterKey = "all";
     private bool _characterFiltersExpanded;
+
+    // 卡片视图模型每次 RefreshView 都会重建，所以多选状态只能挂在窗口上，
+    // 并且以 Mod Id 为键，才能跨刷新、跨筛选保留用户已经勾选的目标。
+    private bool _multiSelectMode;
+    private readonly HashSet<string> _selectedModIds = new(StringComparer.OrdinalIgnoreCase);
+    // "全选当前结果"只应覆盖筛选后仍然可见的卡片，所以每次刷新都记下这批 Id。
+    private readonly List<string> _visibleModIds = [];
     private int? _lastObservedGameProcessId;
     private bool _splitPackageRepairDeferred;
     private bool _splitPackageRepairInProgress;
@@ -89,6 +98,7 @@ public partial class MainWindow : Window
     {
         InitializeComponent();
         _paths.Ensure();
+        CharacterGroupDetector.Configure(_paths, _store);
         _config = _store.Load(_paths.ConfigFile, () => new AppConfig());
         _config.SchemaVersion = 3;
         _logger = new AppLogger(_paths);
@@ -96,6 +106,7 @@ public partial class MainWindow : Window
         _validator = new ModValidator(_paths);
         _runtime = new RuntimeManager(_paths, _store);
         _library = new ModLibrary(_paths, _store, new ConflictDetector());
+        _presets = new ModPresetStore(_paths, _store);
         _dependencyResolver = new DependencyResolver(_paths);
         _gameInput = new GameModReloadService();
         IReadOnlyList<UnmanagedDirectoryChange> quarantined = [];
@@ -129,6 +140,8 @@ public partial class MainWindow : Window
         _launcher = new LaunchService(_paths, _runtime, new GameSettingsManager());
         ModGroupsItemsControl.ItemsSource = _visibleGroups;
         CharacterFiltersItemsControl.ItemsSource = _characterFilters;
+        PresetCombo.ItemsSource = _presetItems;
+        RefreshPresets();
         LogListBox.ItemsSource = _visibleLogs;
         GamePathBox.Text = _config.GameExecutablePath ?? string.Empty;
         ModRootBox.Text = ModRootPointer.Resolve();
