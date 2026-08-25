@@ -6,6 +6,7 @@
 
 - 首页以角色分组展示 Mod 卡片；同一角色默认单选，RabbitFX 等通用依赖不参与角色单选。
 - 识别 Mod 根目录中的 `preview.png`，提供限宽缩略图、点击放大、缩放与 Esc 关闭。
+- 对包含 XXMI `Position.buf` / `Texcoord.buf` / `.ib` 的 Mod 提供离线 3D 静态预览；可读取 INI 绑定的 DDS Diffuse（含 BC7）并显示基础 Alpha 透明，无需安装或启动游戏。未知缓冲布局会跳过，不猜测其他游戏格式。
 - ZIP、7Z、RAR 和文件夹导入，支持多层包装目录、多个候选 Mod、路径穿越防护、文件数与解压大小限制。
 - 扫描 INI 引用、资源声明、哈希和 RabbitFX 依赖，只对安装副本应用可确定的兼容修复并保存 `import-report.json`。
 - 运行中使用管理器内部绝对状态通道即时启用/禁用；首次接管、导入或目录结构变化时才按需发送一次管理器安全重载命令。
@@ -53,4 +54,4 @@ dotnet publish .\src\ZZZModManager\ZZZModManager.csproj -c Release -r win-x64 --
 
 ## 许可证
 
-应用源码使用 GPLv3。SharpCompress、XXMI/ZZMI 和第三方 Mod 仍受各自上游许可证约束；RabbitFX 不作为程序内嵌资源重新分发。
+应用源码使用 GPLv3。SharpCompress、XXMI/ZZMI 和第三方 Mod 仍受各自上游许可证约束；RabbitFX 不作为程序内嵌资源重新分发。BC7 解码部分基于 bc7enc / GARbro 的 MIT 实现，源文件中保留其版权与许可声明。

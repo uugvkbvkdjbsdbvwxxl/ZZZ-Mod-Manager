@@ -489,6 +489,21 @@ public sealed class UiStructureTests
         Assert.Equal("{Binding SelectionVisibility}", (string?)host.Attribute("Visibility"));
     }
 
+    [Fact]
+    public void ModelPreviewIsAQuietSecondaryActionInsideTheCardMediaRegion()
+    {
+        var document = LoadFixture("MainWindow.xaml");
+        var button = document.Descendants(PresentationNamespace + "Button")
+            .Single(element => (string?)element.Attribute(XamlNamespace + "Name") == "CardModelPreviewButton");
+
+        Assert.Equal("ModelPreview_Click", (string?)button.Attribute("Click"));
+        Assert.Equal("{Binding ModelPreviewVisibility}", (string?)button.Attribute("Visibility"));
+        Assert.Equal("{Binding}", (string?)button.Attribute("Tag"));
+        Assert.Equal("34", (string?)button.Attribute("MinHeight"));
+        Assert.NotEqual("{StaticResource PrimaryButton}", (string?)button.Attribute("Style"));
+        Assert.False(string.IsNullOrWhiteSpace((string?)button.Attribute("Content")));
+    }
+
     private static XDocument LoadFixture(string fileName)
     {
         var path = Path.Combine(AppContext.BaseDirectory, "Fixtures", fileName);
