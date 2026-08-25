@@ -165,6 +165,27 @@ public sealed class AppConfig
 
 public sealed record ModStateRequest(string ModId, bool Enabled);
 
+/// <summary>
+/// A named snapshot of which mods were enabled. Presets deliberately store only
+/// the enable flag: character group overrides, conflicts and same-character
+/// exclusivity stay owned by the library rules, so applying an old preset after
+/// the library changed cannot resurrect a stale grouping decision.
+/// </summary>
+public sealed class ModPreset
+{
+    public string Id { get; init; } = Guid.NewGuid().ToString("N");
+    public string Name { get; set; } = string.Empty;
+    public DateTimeOffset CreatedAt { get; init; } = DateTimeOffset.UtcNow;
+    public DateTimeOffset UpdatedAt { get; set; } = DateTimeOffset.UtcNow;
+    public List<string> EnabledModIds { get; set; } = [];
+}
+
+public sealed class ModPresetState
+{
+    public int SchemaVersion { get; set; } = 1;
+    public List<ModPreset> Presets { get; set; } = [];
+}
+
 public sealed record UnmanagedDirectoryChange(
     string OriginalDirectory,
     string QuarantinedDirectory);

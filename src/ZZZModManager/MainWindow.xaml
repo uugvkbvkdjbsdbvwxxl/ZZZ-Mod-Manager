@@ -97,6 +97,7 @@
                                 <RowDefinition Height="Auto" />
                                 <RowDefinition Height="Auto" />
                                 <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
                             </Grid.RowDefinitions>
                             <Border x:Name="CharacterFilterClip" ClipToBounds="True" MaxHeight="82"
                                     GotKeyboardFocus="CharacterFilterClip_GotKeyboardFocus">
@@ -159,6 +160,37 @@
                                     <ComboBoxItem Tag="Pending" Content="待应用 / 需刷新" />
                                 </ComboBox>
                                 <Button Grid.Column="3" Content="刷新" Click="Refresh_Click" />
+                            </Grid>
+                            <!-- 预设与多选共用一条独立的操作带：它们都作用于"整批 Mod"，
+                                 和上面按单个条件收窄视图的搜索/筛选行不是同一类操作。 -->
+                            <Grid Grid.Row="3" Margin="3,8,3,0">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="188" />
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Text="预设方案" VerticalAlignment="Center" Margin="0,0,8,0"
+                                           Foreground="{DynamicResource SecondaryTextBrush}" />
+                                <ComboBox x:Name="PresetCombo" Grid.Column="1" DisplayMemberPath="Name"
+                                          ToolTip="预设只记录“哪些 Mod 处于启用状态”，应用时仍遵守同角色单选与冲突规则"
+                                          SelectionChanged="PresetCombo_SelectionChanged" />
+                                <Button Grid.Column="2" x:Name="ApplyPresetButton" Margin="7,0,0,0"
+                                        Style="{StaticResource PrimaryButton}" Content="应用预设"
+                                        ToolTip="按预设一次性切换整库启用状态" Click="ApplyPreset_Click" />
+                                <Button Grid.Column="3" x:Name="SavePresetButton" Margin="6,0,0,0"
+                                        Content="保存当前状态" ToolTip="把当前已启用的 Mod 保存成预设；同名预设会被覆盖"
+                                        Click="SavePreset_Click" />
+                                <Button Grid.Column="4" x:Name="DeletePresetButton" Margin="6,0,0,0"
+                                        Style="{StaticResource GhostButton}" Content="删除预设"
+                                        Click="DeletePreset_Click" />
+                                <CheckBox x:Name="MultiSelectToggle" Grid.Column="6" Margin="10,0,0,0"
+                                          VerticalAlignment="Center" Content="多选模式"
+                                          ToolTip="开启后每张卡片显示复选框，底部出现批量操作条"
+                                          Click="MultiSelectToggle_Click" />
                             </Grid>
                         </Grid>
                     </Border>
@@ -225,6 +257,19 @@
                                                                         </Border>
                                                                     </Grid>
                                                                 </Button>
+                                                                <!-- 复选框刻意放在预览按钮之外：它若作为按钮内容，
+                                                                     点击会被按钮吞掉而误开预览窗口。 -->
+                                                                <Border Visibility="{Binding SelectionVisibility}"
+                                                                        HorizontalAlignment="Left" VerticalAlignment="Top"
+                                                                        Margin="8" Padding="7,5"
+                                                                        CornerRadius="{StaticResource ControlRadius}"
+                                                                        Background="{DynamicResource SurfaceBrush}"
+                                                                        BorderBrush="{Binding SelectionBorderBrush}" BorderThickness="1">
+                                                                    <CheckBox x:Name="CardSelectCheckBox" Margin="0"
+                                                                              Tag="{Binding}" IsChecked="{Binding IsSelected, Mode=OneWay}"
+                                                                              ToolTip="选中以参与批量操作"
+                                                                              Click="CardSelect_Click" />
+                                                                </Border>
                                                                 <Grid Grid.Row="1" Margin="12,10,12,9">
                                                                     <Grid.RowDefinitions>
                                                                         <RowDefinition Height="Auto" />
@@ -290,6 +335,27 @@
                                            Margin="0,6,0,10" Foreground="{DynamicResource SecondaryTextBrush}"
                                            TextWrapping="Wrap" TextAlignment="Center" />
                                 <Button Content="清除筛选" Click="ClearFilters_Click" HorizontalAlignment="Center" />
+                            </StackPanel>
+                        </Border>
+                        <!-- 批量操作条浮在卡片网格底部，只在多选模式下出现，
+                             这样默认视图里每张卡片仍然只有一个主操作。 -->
+                        <Border x:Name="BatchActionBar" Visibility="Collapsed"
+                                HorizontalAlignment="Center" VerticalAlignment="Bottom"
+                                Margin="0,0,0,14" Style="{StaticResource PanelBorder}" Padding="14,10">
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock x:Name="BatchSelectionText" VerticalAlignment="Center"
+                                           Margin="0,0,12,0" Text="已选 0 个 Mod" />
+                                <Button x:Name="BatchEnableButton" Content="批量启用"
+                                        Style="{StaticResource PrimaryButton}" Click="BatchEnable_Click" />
+                                <Button x:Name="BatchDisableButton" Content="批量禁用" Margin="6,0,0,0"
+                                        Click="BatchDisable_Click" />
+                                <Button x:Name="BatchSavePresetButton" Content="存为预设" Margin="6,0,0,0"
+                                        ToolTip="把当前勾选的 Mod 作为预设的启用集合保存"
+                                        Click="BatchSavePreset_Click" />
+                                <Button x:Name="BatchSelectVisibleButton" Content="全选当前结果" Margin="6,0,0,0"
+                                        Style="{StaticResource GhostButton}" Click="BatchSelectVisible_Click" />
+                                <Button x:Name="BatchClearButton" Content="清空选择" Margin="6,0,0,0"
+                                        Style="{StaticResource GhostButton}" Click="BatchClearSelection_Click" />
                             </StackPanel>
                         </Border>
                     </Grid>

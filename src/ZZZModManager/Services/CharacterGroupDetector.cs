@@ -1,6 +1,7 @@
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.RegularExpressions;
+using ZZZModManager.Infrastructure;
 using ZZZModManager.Models;
 
 namespace ZZZModManager.Services;
@@ -8,59 +9,32 @@ namespace ZZZModManager.Services;
 /// <summary>
 /// Resolves a Mod to a stable character group. Built-in groups are intentionally
 /// separate from groups discovered in the current library and user-created groups.
+/// The roster itself is data: <see cref="Configure"/> swaps in the table stored at
+/// <c>characters.json</c> in the library root, and every consumer keeps using the
+/// same static surface.
 /// </summary>
 public static class CharacterGroupDetector
 {
     private sealed record CharacterDefinition(CharacterGroupInfo Group, string[] Aliases);
 
-    private static readonly CharacterDefinition[] Characters =
-    [
-        Character("velina", "维琳娜 / Velina", "velina", "velinablackfan", "维琳娜"),
-        Character("alice", "爱丽丝 / Alice", "alice", "alicetops", "爱丽丝"),
-        Character("nicole", "妮可 / Nicole", "nicole", "妮可"),
-        Character("anby", "安比 / Anby", "anby", "安比"),
-        Character("billy", "比利 / Billy", "billy", "比利"),
-        Character("nekomata", "猫又 / Nekomata", "nekomata", "猫又"),
-        Character("corin", "可琳 / Corin", "corin", "可琳"),
-        Character("lycaon", "莱卡恩 / Lycaon", "lycaon", "莱卡恩"),
-        Character("soukaku", "苍角 / Soukaku", "soukaku", "苍角"),
-        Character("zhuyuan", "朱鸢 / Zhu Yuan", "zhu yuan", "zhuyuan", "朱鸢"),
-        Character("qingyi", "青衣 / Qingyi", "qingyi", "青衣"),
-        Character("jane", "简 / Jane Doe", "jane doe", "janedoe", "简"),
-        Character("seth", "赛斯 / Seth", "seth", "赛斯", "席德", "席德流萤", "老席德"),
-        Character("soldier11", "11号 / Soldier 11", "soldier 11", "soldier11", "11号"),
-        Character("rina", "丽娜 / Rina", "rina", "丽娜"),
-        Character("anton", "安东 / Anton", "anton", "安东"),
-        Character("grace", "格莉丝 / Grace", "grace", "格莉丝"),
-        Character("koleda", "珂蕾妲 / Koleda", "koleda", "珂蕾妲"),
-        Character("ben", "本 / Ben", "ben", "本"),
-        Character("caesar", "凯撒 / Caesar", "caesar", "凯撒"),
-        Character("burnice", "柏妮思 / Burnice", "burnice", "柏妮思"),
-        Character("lucy", "露西 / Lucy", "lucy", "露西"),
-        Character("piper", "派派 / Piper", "piper", "派派"),
-        Character("lighter", "莱特 / Lighter", "lighter", "莱特"),
-        Character("yanagi", "柳 / Yanagi", "yanagi", "柳"),
-        Character("miyabi", "星见雅 / Miyabi", "miyabi", "星见雅"),
-        Character("harumasa", "浅羽悠真 / Harumasa", "harumasa", "浅羽悠真", "悠真"),
-        Character("yixuan", "仪玄 / Yixuan", "yixuan", "仪玄"),
-        Character("yuzuha", "橘福福 / Yuzuha", "yuzuha", "橘福福"),
-        Character("evelyn", "伊芙琳 / Evelyn", "evelyn", "伊芙琳"),
-        Character("hugo", "雨果 / Hugo", "hugo", "雨果")
-    ];
+    private static readonly object TableGate = new();
+    private static CharacterDefinition[] Characters;
+    private static CharacterGroupInfo FrameworkGroup;
+    private static string[] DependencyTokens;
+    private static string[] NonCharacterTokens;
+    private static string[] GenericChineseTokens;
+    private static HashSet<string> GenericAsciiTokens;
 
-    private static readonly CharacterGroupInfo FrameworkGroup =
-        new("framework", "通用依赖 / 框架", CharacterGroupKind.Framework);
-
-    private static readonly string[] DependencyTokens =
-    [
-        "rabbitfx", "modframework", "3dmigoto", "通用依赖"
-    ];
-    private static readonly string[] NonCharacterTokens =
-    [
-        "功能", "界面", "菜单", "快捷键", "法线", "修复", "插件", "依赖", "框架", "工具", "教程", "说明",
-        "normalfix", "normalmap", "hotkey", "utility", "helper", "menu", "soundwave", "framework", "dependency",
-        "ui", "3dmigoto", "misc", "scooter", "controller", "checkhash", "diffuse", "seed"
-    ];
+    static CharacterGroupDetector()
+    {
+        var table = CharacterTable.CreateBuiltIn();
+        Characters = BuildCharacters(table);
+        FrameworkGroup = BuildFrameworkGroup(table);
+        DependencyTokens = BuildTokens(table.DependencyTokens);
+        NonCharacterTokens = BuildTokens(table.NonCharacterTokens);
+        GenericChineseTokens = BuildTokens(table.GenericChineseTokens);
+        GenericAsciiTokens = BuildAsciiTokens(table.GenericAsciiTokens);
+    }
 
     private static readonly Regex ChineseLabelRegex = new(
         @"[\p{IsCJKUnifiedIdeographs}]{2,5}",
@@ -71,27 +45,84 @@ public static class CharacterGroupDetector
     private static readonly Regex AsciiWordRegex = new(
         @"[A-Za-z][A-Za-z0-9]{2,}",
         RegexOptions.Compiled);
-    private static readonly string[] GenericChineseTokens =
-    [
-        "皮肤", "武器", "模型", "模式", "文件夹", "放入", "修改", "修复", "法线", "时间", "角色", "外观", "配饰",
-        "功能", "界面", "菜单", "快捷键", "插件", "依赖", "框架", "工具", "教程", "说明", "通用", "启动", "加载", "切换",
-        "头发", "身体", "手", "腿", "脚", "脸", "背", "阴影", "材质", "顶点", "位置", "槽位", "检查", "资源", "标记"
-    ];
-    private static readonly HashSet<string> GenericAsciiTokens = new(StringComparer.OrdinalIgnoreCase)
-    {
-        "disabled", "unmanaged", "mod", "mods", "skin", "outfit", "body", "face", "hair", "head",
-        "weapon", "weapons", "fix", "normal", "map", "texture", "override", "resource", "commandlist",
-        "rabbitfx", "uncensored", "updated", "misc", "soundwave", "demo", "toggle", "image", "draw",
-        "main", "ini", "character", "model", "separate", "pack", "package", "school", "uniform",
-        "fluffy", "nude", "half", "cyber", "mode", "time", "zzz", "zzmi", "xxmi", "ui", "utility", "helper",
-        "hotkey", "menu", "soundwave", "feature", "guide", "framework", "dependency", "tool", "tools", "textureoverride",
-        "checkhash", "diffuse", "scooter", "controller", "seed", "slot", "component", "position", "texcoord", "vertexlimitraise", "mark", "shadow"
-    };
 
-    public static IReadOnlyList<CharacterGroupInfo> KnownGroups { get; } =
+    /// <summary>
+    /// Loads the roster from the library root, seeding the file on first run.
+    /// A missing, unreadable, corrupt or rosterless file leaves the built-in table
+    /// in place so detection never degrades to "未识别" because of bad data.
+    /// </summary>
+    public static void Configure(AppPaths paths, JsonFileStore store)
+    {
+        var seeded = false;
+        if (!File.Exists(paths.CharacterTableFile))
+        {
+            store.Save(paths.CharacterTableFile, CharacterTable.CreateBuiltIn());
+            seeded = true;
+        }
+
+        if (seeded)
+        {
+            ApplyTable(CharacterTable.CreateBuiltIn());
+            return;
+        }
+
+        var table = store.Load(paths.CharacterTableFile, CharacterTable.CreateBuiltIn);
+        ApplyTable(table);
+    }
+
+    /// <summary>
+    /// Restores the compiled-in roster. Exposed so tests can undo a
+    /// <see cref="Configure"/> call and stay order independent.
+    /// </summary>
+    public static void ResetToBuiltIn() => ApplyTable(CharacterTable.CreateBuiltIn());
+
+    internal static void ApplyTable(CharacterTable? table)
+    {
+        var fallback = CharacterTable.CreateBuiltIn();
+        var source = table?.Characters is { Count: > 0 } ? table : fallback;
+        lock (TableGate)
+        {
+            Characters = BuildCharacters(source!);
+            FrameworkGroup = BuildFrameworkGroup(source!);
+            DependencyTokens = BuildTokens(source!.DependencyTokens ?? fallback.DependencyTokens);
+            NonCharacterTokens = BuildTokens(source.NonCharacterTokens ?? fallback.NonCharacterTokens);
+            GenericChineseTokens = BuildTokens(source.GenericChineseTokens ?? fallback.GenericChineseTokens);
+            GenericAsciiTokens = BuildAsciiTokens(source.GenericAsciiTokens ?? fallback.GenericAsciiTokens);
+        }
+    }
+
+    private static CharacterDefinition[] BuildCharacters(CharacterTable table) =>
+        (table.Characters ?? [])
+        .Where(entry => !string.IsNullOrWhiteSpace(entry.Key) && !string.IsNullOrWhiteSpace(entry.DisplayName))
+        .DistinctBy(entry => entry.Key, StringComparer.OrdinalIgnoreCase)
+        .Select(entry => new CharacterDefinition(
+            new CharacterGroupInfo(entry.Key.Trim(), entry.DisplayName.Trim(), CharacterGroupKind.Character),
+            (entry.Aliases ?? [])
+                .Where(alias => !string.IsNullOrWhiteSpace(alias))
+                .Select(alias => alias.Trim())
+                .ToArray()))
+        .ToArray();
+
+    private static CharacterGroupInfo BuildFrameworkGroup(CharacterTable table) =>
+        new(
+            string.IsNullOrWhiteSpace(table.FrameworkKey) ? "framework" : table.FrameworkKey.Trim(),
+            string.IsNullOrWhiteSpace(table.FrameworkDisplayName) ? "通用依赖 / 框架" : table.FrameworkDisplayName.Trim(),
+            CharacterGroupKind.Framework);
+
+    private static string[] BuildTokens(IEnumerable<string>? tokens) =>
+        (tokens ?? [])
+        .Where(token => !string.IsNullOrWhiteSpace(token))
+        .Select(token => token.Trim())
+        .Distinct(StringComparer.OrdinalIgnoreCase)
+        .ToArray();
+
+    private static HashSet<string> BuildAsciiTokens(IEnumerable<string>? tokens) =>
+        new(BuildTokens(tokens), StringComparer.OrdinalIgnoreCase);
+
+    public static IReadOnlyList<CharacterGroupInfo> KnownGroups =>
         Characters.Select(item => item.Group).Append(FrameworkGroup).ToList();
 
-    public static IReadOnlyList<CharacterGroupInfo> BuiltInCharacterGroups { get; } =
+    public static IReadOnlyList<CharacterGroupInfo> BuiltInCharacterGroups =>
         Characters.Select(item => item.Group).ToList();
 
     public static bool IsRoleGroup(CharacterGroupKind kind) =>
@@ -338,9 +369,6 @@ public static class CharacterGroupDetector
             : group.Key;
         return ContainsAlias(text, display) || ContainsAlias(text, keyPart);
     }
-
-    private static CharacterDefinition Character(string key, string displayName, params string[] aliases) =>
-        new(new CharacterGroupInfo(key, displayName, CharacterGroupKind.Character), aliases);
 
     private static bool ContainsAlias(string text, string alias)
     {

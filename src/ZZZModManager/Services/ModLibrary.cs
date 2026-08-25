@@ -322,52 +322,87 @@ public sealed class ModLibrary : IModLibrary
     public ModLibraryBatchResult ApplyStateBatch(string id, bool enabled, bool keepLoaded)
     {
         var target = Find(id) ?? throw new InvalidOperationException("找不到该 Mod。");
-        var requests = new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase)
+        return ApplyStateBatch([new ModStateRequest(target.Id, enabled)], keepLoaded);
+    }
+
+    /// <summary>
+    /// Applies a whole selection (multi-select batch or preset) as one transaction.
+    /// Same-character single select and hash conflicts are resolved in request
+    /// order, so a later request wins over an earlier one and over mods that are
+    /// merely already enabled.
+    /// </summary>
+    public ModLibraryBatchResult ApplyStateBatch(IEnumerable<ModStateRequest> requests, bool keepLoaded)
+    {
+        var desired = new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase);
+        var ordered = new List<ModManifest>();
+        foreach (var request in requests)
         {
-            [target.Id] = enabled
-        };
+            var manifest = Find(request.ModId) ?? throw new InvalidOperationException($"找不到 Mod：{request.ModId}");
+            if (!desired.ContainsKey(manifest.Id))
+            {
+                ordered.Add(manifest);
+            }
+
+            desired[manifest.Id] = request.Enabled;
+        }
+
         var disabledByCharacter = new List<ModManifest>();
         var disabledByConflict = new List<ModManifest>();
 
-        if (enabled)
+        foreach (var target in ordered.Where(manifest => desired[manifest.Id]))
         {
             var targetGroup = DetectCharacterGroup(target);
             if (CharacterGroupDetector.IsRoleGroup(targetGroup.Kind))
             {
-                foreach (var other in _state.Mods.Where(mod => mod.Enabled && !SameId(mod, target)))
+                foreach (var other in _state.Mods.Where(mod => !SameId(mod, target) && IsEffectivelyEnabled(mod, desired)))
                 {
                     var otherGroup = DetectCharacterGroup(other);
                     if (CharacterGroupDetector.IsRoleGroup(otherGroup.Kind)
                         && string.Equals(otherGroup.Key, targetGroup.Key, StringComparison.OrdinalIgnoreCase))
                     {
-                        requests[other.Id] = false;
-                        disabledByCharacter.Add(other);
+                        desired[other.Id] = false;
+                        Track(disabledByCharacter, other);
                     }
                 }
             }
 
-            foreach (var conflict in _conflictDetector.FindConflicts(target, _state.Mods))
+            foreach (var conflict in _state.Mods
+                         .Where(mod => !SameId(mod, target)
+                                       && IsEffectivelyEnabled(mod, desired)
+                                       && mod.Hashes.Overlaps(target.Hashes)))
             {
-                requests[conflict.Id] = false;
+                desired[conflict.Id] = false;
                 if (!disabledByCharacter.Any(mod => SameId(mod, conflict)))
                 {
-                    disabledByConflict.Add(conflict);
+                    Track(disabledByConflict, conflict);
                 }
             }
         }
 
-        var result = ApplyRequests(requests.Select(pair => new ModStateRequest(pair.Key, pair.Value)), keepLoaded);
+        var result = ApplyRequests(desired.Select(pair => new ModStateRequest(pair.Key, pair.Value)), keepLoaded);
         return new ModLibraryBatchResult
         {
             ChangedMods = result.ChangedMods,
             IncludeTreeChanged = result.IncludeTreeChanged,
-            DisabledByCharacter = disabledByCharacter,
+            DisabledByCharacter = disabledByCharacter
+                .Where(mod => !desired.TryGetValue(mod.Id, out var enabled) || !enabled)
+                .ToList(),
             DisabledByConflict = disabledByConflict
+                .Where(mod => !desired.TryGetValue(mod.Id, out var enabled) || !enabled)
+                .ToList()
         };
     }
 
-    public ModLibraryBatchResult ApplyStateBatch(IEnumerable<ModStateRequest> requests, bool keepLoaded) =>
-        ApplyRequests(requests, keepLoaded);
+    private static bool IsEffectivelyEnabled(ModManifest manifest, IReadOnlyDictionary<string, bool> desired) =>
+        desired.TryGetValue(manifest.Id, out var enabled) ? enabled : manifest.Enabled;
+
+    private static void Track(List<ModManifest> bucket, ModManifest manifest)
+    {
+        if (!bucket.Any(existing => SameId(existing, manifest)))
+        {
+            bucket.Add(manifest);
+        }
+    }
 
     public void SetEnabled(string id, bool enabled, bool keepLoaded = false) =>
         ApplyRequests([new ModStateRequest(id, enabled)], keepLoaded);

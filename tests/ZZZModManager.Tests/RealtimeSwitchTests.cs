@@ -6,6 +6,7 @@ using ZZZModManager.Services;
 
 namespace ZZZModManager.Tests;
 
+[Collection(CharacterRosterCollection.Name)]
 public sealed class RealtimeSwitchTests : IDisposable
 {
     private readonly string _root = Path.Combine(Path.GetTempPath(), "zzz-mm-realtime-tests", Guid.NewGuid().ToString("N"));

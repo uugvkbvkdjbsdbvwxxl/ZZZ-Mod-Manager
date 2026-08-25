@@ -8,6 +8,15 @@ using ZZZModManager.Services;
 
 namespace ZZZModManager.Tests;
 
+// CharacterGroupDetector keeps its roster in static state, so every test class that
+// touches it shares one collection and therefore never runs in parallel with the others.
+[CollectionDefinition(CharacterRosterCollection.Name)]
+public sealed class CharacterRosterCollection
+{
+    public const string Name = "character-roster";
+}
+
+[Collection(CharacterRosterCollection.Name)]
 public sealed class CompatibilityTests : IDisposable
 {
     private readonly string _root = Path.Combine(Path.GetTempPath(), "zzz-mm-tests", Guid.NewGuid().ToString("N"));
@@ -1182,6 +1191,141 @@ filename = body.buf
         var pointer = Path.Combine(_root, "pointer", "mod-root.txt");
         Assert.False(ModRootPointer.TrySave(pointer, Path.GetPathRoot(_root), out _));
         Assert.False(File.Exists(pointer));
+    }
+
+    [Fact]
+    public void ModPresetStorePersistsNamedEnabledSetsAndOverwritesOnTheSameName()
+    {
+        var store = new ModPresetStore(_paths, new JsonFileStore());
+        var saved = store.Save("  日常队  ", ["mod-a", "mod-b", "mod-a", "   "]);
+
+        Assert.Equal("日常队", saved.Name);
+        Assert.Equal(["mod-a", "mod-b"], saved.EnabledModIds);
+        Assert.True(File.Exists(_paths.PresetsFile));
+
+        // Saving the same name must overwrite in place instead of piling up duplicates.
+        var overwritten = store.Save("日常队", ["mod-c"]);
+        Assert.Equal(saved.Id, overwritten.Id);
+        Assert.Single(store.GetAll());
+
+        var reloaded = new ModPresetStore(_paths, new JsonFileStore());
+        var preset = Assert.Single(reloaded.GetAll());
+        Assert.Equal("日常队", preset.Name);
+        Assert.Equal(["mod-c"], preset.EnabledModIds);
+        Assert.NotNull(reloaded.Find(saved.Id));
+
+        Assert.False(reloaded.Delete("no-such-preset"));
+        Assert.True(reloaded.Delete(saved.Id));
+        Assert.Empty(new ModPresetStore(_paths, new JsonFileStore()).GetAll());
+    }
+
+    [Fact]
+    public void ModPresetStoreRejectsBlankNamesAndBuildsAnAbsoluteStateVector()
+    {
+        var store = new ModPresetStore(_paths, new JsonFileStore());
+        Assert.Throws<ArgumentException>(() => store.Save("   ", ["mod-a"]));
+
+        var preset = store.Save("剧情通关", ["mod-a", "mod-gone"]);
+        var installed = new[]
+        {
+            new ModManifest { Id = "mod-a" },
+            new ModManifest { Id = "mod-b" }
+        };
+
+        var requests = store.BuildRequests(preset, installed);
+
+        // A preset is absolute: everything it does not list gets turned off, and
+        // ids that no longer exist in the library are simply dropped.
+        Assert.Equal(2, requests.Count);
+        Assert.True(requests.Single(request => request.ModId == "mod-a").Enabled);
+        Assert.False(requests.Single(request => request.ModId == "mod-b").Enabled);
+        Assert.DoesNotContain(requests, request => request.ModId == "mod-gone");
+    }
+
+    [Fact]
+    public void CharacterGroupDetectorSeedsTheCharacterTableOnFirstRunAndKeepsBuiltInDetection()
+    {
+        var velina = Path.Combine(_root, "seeded-velina");
+        Directory.CreateDirectory(velina);
+        File.WriteAllText(Path.Combine(velina, "character.ini"), "[TextureOverrideVelina]\nhash = bd043a8e", Encoding.UTF8);
+        var manifest = new ModManifest { DisplayName = "Prayer Outfit", InstalledDirectory = "Velina" };
+
+        try
+        {
+            Assert.False(File.Exists(_paths.CharacterTableFile));
+            CharacterGroupDetector.Configure(_paths, new JsonFileStore());
+
+            Assert.True(File.Exists(_paths.CharacterTableFile));
+            Assert.Contains("velina", File.ReadAllText(_paths.CharacterTableFile), StringComparison.OrdinalIgnoreCase);
+            Assert.Equal("维琳娜 / Velina", CharacterGroupDetector.Detect(manifest, velina));
+        }
+        finally
+        {
+            CharacterGroupDetector.ResetToBuiltIn();
+        }
+    }
+
+    [Fact]
+    public void CharacterGroupDetectorFallsBackToBuiltInRosterWhenTheTableFileIsUnusable()
+    {
+        var velina = Path.Combine(_root, "fallback-velina");
+        Directory.CreateDirectory(velina);
+        File.WriteAllText(Path.Combine(velina, "character.ini"), "[TextureOverrideVelina]\nhash = bd043a8e", Encoding.UTF8);
+        var manifest = new ModManifest { DisplayName = "Prayer Outfit", InstalledDirectory = "Velina" };
+
+        try
+        {
+            File.WriteAllText(_paths.CharacterTableFile, "{ this is not json", Encoding.UTF8);
+            CharacterGroupDetector.Configure(_paths, new JsonFileStore());
+            Assert.Equal("维琳娜 / Velina", CharacterGroupDetector.Detect(manifest, velina));
+
+            // A well-formed file without any roster is just as unusable as broken JSON.
+            File.WriteAllText(_paths.CharacterTableFile, """{"schemaVersion":1,"characters":[]}""", Encoding.UTF8);
+            CharacterGroupDetector.Configure(_paths, new JsonFileStore());
+            Assert.Equal("维琳娜 / Velina", CharacterGroupDetector.Detect(manifest, velina));
+        }
+        finally
+        {
+            CharacterGroupDetector.ResetToBuiltIn();
+        }
+    }
+
+    [Fact]
+    public void CharacterGroupDetectorHonoursAnExternalRosterEditedByTheUser()
+    {
+        var custom = Path.Combine(_root, "custom-roster");
+        Directory.CreateDirectory(custom);
+        var manifest = new ModManifest { DisplayName = "Remielle Outfit", InstalledDirectory = "Remielle" };
+
+        try
+        {
+            File.WriteAllText(
+                _paths.CharacterTableFile,
+                """
+                {
+                  "schemaVersion": 1,
+                  "characters": [
+                    { "key": "remielle", "displayName": "蕾米尔 / Remielle", "aliases": ["remielle", "蕾米尔"] }
+                  ]
+                }
+                """,
+                Encoding.UTF8);
+
+            CharacterGroupDetector.Configure(_paths, new JsonFileStore());
+
+            var info = CharacterGroupDetector.DetectInfo(manifest, custom);
+            Assert.Equal(CharacterGroupKind.Character, info.Kind);
+            Assert.Equal("remielle", info.Key);
+            Assert.Equal("蕾米尔 / Remielle", info.DisplayName);
+            Assert.Contains(CharacterGroupDetector.KnownGroups, group => group.Key == "remielle");
+
+            // The narrowed roster replaces the built-in one, so Velina is no longer a known role.
+            Assert.DoesNotContain(CharacterGroupDetector.KnownGroups, group => group.Key == "velina");
+        }
+        finally
+        {
+            CharacterGroupDetector.ResetToBuiltIn();
+        }
     }
 
     private string CreateMod(string wrapper)
