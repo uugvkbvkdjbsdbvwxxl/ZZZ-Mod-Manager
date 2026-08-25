@@ -237,26 +237,39 @@
                                                                     <RowDefinition Height="126" />
                                                                     <RowDefinition Height="*" />
                                                                 </Grid.RowDefinitions>
-                                                                <Button Padding="0" Margin="0" BorderThickness="0"
-                                                                        BorderBrush="Transparent" Background="{DynamicResource SurfaceBrush}"
-                                                                        Tag="{Binding}" Click="Preview_Click">
-                                                                    <Grid ClipToBounds="True">
+                                                                <Grid ClipToBounds="True">
+                                                                    <Button Padding="0" Margin="0" BorderThickness="0"
+                                                                            BorderBrush="Transparent" Background="{DynamicResource SurfaceBrush}"
+                                                                            Tag="{Binding}" Click="Preview_Click"
+                                                                            ToolTip="查看 Mod 作者提供的预览图">
+                                                                        <Grid ClipToBounds="True">
                                                                         <Image Source="{Binding Thumbnail}" Stretch="UniformToFill"
                                                                                RenderOptions.BitmapScalingMode="LowQuality" />
                                                                         <StackPanel Visibility="{Binding PreviewPlaceholderVisibility}"
                                                                                     HorizontalAlignment="Center" VerticalAlignment="Center">
                                                                             <TextBlock Text="◌" FontSize="32" HorizontalAlignment="Center"
                                                                                        Foreground="{DynamicResource MutedTextBrush}" />
-                                                                            <TextBlock Text="无预览图" Margin="0,4,0,0"
+                                                                            <TextBlock Text="{Binding PreviewPlaceholderText}" Margin="0,4,0,0"
                                                                                        Foreground="{DynamicResource SecondaryTextBrush}" />
                                                                         </StackPanel>
-                                                                        <Border HorizontalAlignment="Right" VerticalAlignment="Top" Margin="8" Padding="8,4"
-                                                                                CornerRadius="{StaticResource PillRadius}" Background="{Binding StatusBrush}">
-                                                                            <TextBlock Text="{Binding StatusText}" FontSize="11"
-                                                                                       FontWeight="SemiBold" Foreground="{Binding StatusForeground}" />
-                                                                        </Border>
-                                                                    </Grid>
-                                                                </Button>
+                                                                        </Grid>
+                                                                    </Button>
+                                                                    <Button x:Name="CardModelPreviewButton"
+                                                                            HorizontalAlignment="Left" VerticalAlignment="Bottom"
+                                                                            MinHeight="34" Margin="8" Padding="10,5"
+                                                                            Visibility="{Binding ModelPreviewVisibility}"
+                                                                            Foreground="{DynamicResource AccentBrush}"
+                                                                            Background="{DynamicResource SurfaceRaisedBrush}"
+                                                                            BorderBrush="{DynamicResource AccentBrush}"
+                                                                            Content="3D 预览" Tag="{Binding}"
+                                                                            ToolTip="离线解析 XXMI 的 Position / Texcoord / IB 并打开可旋转模型"
+                                                                            Click="ModelPreview_Click" />
+                                                                    <Border HorizontalAlignment="Right" VerticalAlignment="Top" Margin="8" Padding="8,4"
+                                                                            CornerRadius="{StaticResource PillRadius}" Background="{Binding StatusBrush}">
+                                                                        <TextBlock Text="{Binding StatusText}" FontSize="11"
+                                                                                   FontWeight="SemiBold" Foreground="{Binding StatusForeground}" />
+                                                                    </Border>
+                                                                </Grid>
                                                                 <!-- 复选框刻意放在预览按钮之外：它若作为按钮内容，
                                                                      点击会被按钮吞掉而误开预览窗口。 -->
                                                                 <Border Visibility="{Binding SelectionVisibility}"

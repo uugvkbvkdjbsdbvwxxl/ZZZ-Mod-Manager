@@ -37,6 +37,7 @@ public partial class MainWindow
                 overlaps,
                 runtimeState,
                 _liveSwitch,
+                _modelPreviewLoader,
                 character,
                 _multiSelectMode,
                 _selectedModIds.Contains(manifest.Id));
@@ -388,6 +389,32 @@ public partial class MainWindow
         LightboxOverlay.Focus();
     }
 
+    private async void ModelPreview_Click(object sender, RoutedEventArgs e)
+    {
+        if ((sender as Button)?.Tag is not ModCardViewModel card || _busy)
+        {
+            return;
+        }
+
+        SetBusy(true, $"正在生成 {card.DisplayName} 的 3D 预览…");
+        try
+        {
+            var scene = await Task.Run(() => _modelPreviewLoader.Load(card.DirectoryPath));
+            SetBusy(false);
+            new ModelPreviewWindow(card.DisplayName, scene) { Owner = this }.ShowDialog();
+        }
+        catch (ModelPreviewException ex)
+        {
+            SetBusy(false);
+            ShowToast(ex.Message, true);
+        }
+        catch (Exception ex)
+        {
+            SetBusy(false);
+            ShowError("生成 3D 预览失败", ex);
+        }
+    }
+
     private void CloseLightbox_Click(object sender, RoutedEventArgs e) => CloseLightbox();
 
     private void LightboxBackdrop_Click(object sender, MouseButtonEventArgs e)
@@ -460,7 +487,8 @@ public partial class MainWindow
 
         var dialog = new GroupSelectionWindow(
             card.Manifest.CharacterGroupOverrideKey,
-            _library.GetAvailableCharacterGroups()) { Owner = this };
+            _library.GetAvailableCharacterGroups())
+        { Owner = this };
         if (dialog.ShowDialog() == true)
         {
             foreach (var created in dialog.CreatedGroups)
@@ -548,6 +576,7 @@ public sealed class ModCardViewModel
     public string DisplayName => Manifest.DisplayName;
     public string CharacterDisplayName => Character.DisplayName;
     public string? PreviewPath { get; }
+    private readonly Lazy<bool> _modelPreviewAvailable;
 
     // 缩略图按需解码：卡片容器由虚拟化面板实例化时绑定才会读到这里，
     // 视野外的 Mod 因此不付出解码成本。不在视图模型里缓存位图，
@@ -557,6 +586,8 @@ public sealed class ModCardViewModel
         : PreviewImageLoader.Load(PreviewPath, ThumbnailDecodeDimension);
 
     public Visibility PreviewPlaceholderVisibility => Thumbnail is null ? Visibility.Visible : Visibility.Collapsed;
+    public Visibility ModelPreviewVisibility => _modelPreviewAvailable.Value ? Visibility.Visible : Visibility.Collapsed;
+    public string PreviewPlaceholderText => _modelPreviewAvailable.Value ? "可生成 3D 模型预览" : "无预览图";
     public string ToggleText => Manifest.Enabled ? "禁用 Mod" : "启用 Mod";
     public string StatusText { get; }
     public Brush StatusBrush { get; }
@@ -581,6 +612,7 @@ public sealed class ModCardViewModel
         IReadOnlyList<ModManifest> conflictingMods,
         RuntimeCardState? runtimeState,
         ILiveModSwitchService liveSwitch,
+        IModModelPreviewLoader modelPreviewLoader,
         CharacterGroupInfo character,
         bool multiSelectMode = false,
         bool isSelected = false)
@@ -593,6 +625,7 @@ public sealed class ModCardViewModel
         ConflictingMods = conflictingMods;
         Character = character;
         PreviewPath = ModPreviewLocator.Resolve(directoryPath, manifest.PreviewFile);
+        _modelPreviewAvailable = new Lazy<bool>(() => modelPreviewLoader.CanLoad(directoryPath));
         RuntimeMessage = runtimeState?.Message ?? string.Empty;
 
         var pending = runtimeState?.Application is ModStateApplication.Pending or ModStateApplication.Failed;
