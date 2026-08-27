@@ -134,7 +134,8 @@ public sealed class UiStructureTests
             new[]
             {
                 "ShowHotkeys_Click", "InspectMod_Click", "OpenModDirectory_Click",
-                "ChangeGroup_Click", "DeleteMod_Click"
+                "ChangeGroup_Click", "UpdateModArchive_Click", "UpdateModFolder_Click",
+                "ModVersionHistory_Click", "DeleteMod_Click"
             },
             handlers);
 
@@ -504,10 +505,59 @@ public sealed class UiStructureTests
         Assert.False(string.IsNullOrWhiteSpace((string?)button.Attribute("Content")));
     }
 
+    [Fact]
+    public void ModelPreviewWindowExposesVariantsDiagnosticsAndPngExport()
+    {
+        var source = LoadTextFixture("ModelPreviewWindow.cs");
+
+        Assert.Contains("选择外观变量", source, StringComparison.Ordinal);
+        Assert.Contains("VariantSelectionChanged", source, StringComparison.Ordinal);
+        Assert.Contains("public override string ToString() => Label;", source, StringComparison.Ordinal);
+        Assert.Contains("仅改变静态预览，不写入 Mod 的 INI。", source, StringComparison.Ordinal);
+        Assert.Contains("3D 预览兼容诊断", source, StringComparison.Ordinal);
+        Assert.Contains("导出 3D 预览 PNG", source, StringComparison.Ordinal);
+        Assert.Contains("RenderTargetBitmap", source, StringComparison.Ordinal);
+        Assert.Contains("实验性 CPU Shader 只读合成贴图", source, StringComparison.Ordinal);
+        Assert.Contains("启用 LightMap MaterialMap 近似材质", source, StringComparison.Ordinal);
+        Assert.Contains("启用 NormalMap 自定义 Shader 光照", source, StringComparison.Ordinal);
+        Assert.Contains("启用 3D 预览贴图轮廓增强", source, StringComparison.Ordinal);
+        Assert.Contains("游戏原始头脸", source, StringComparison.Ordinal);
+        Assert.Contains("导入最新 F8 转储", source, StringComparison.Ordinal);
+        Assert.Contains("导入最新游戏头脸帧分析转储", source, StringComparison.Ordinal);
+        Assert.Contains("准备安全的游戏头脸帧分析采集", source, StringComparison.Ordinal);
+        Assert.Contains("快捷键重载无法启用 FrameAnalysis 上下文", source, StringComparison.Ordinal);
+        Assert.Contains("缓存不会写入 Mod 或游戏文件", source, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void ModCardsExposeSafeUpdateDiffAndRollbackActions()
+    {
+        var document = LoadFixture("MainWindow.xaml");
+        var names = document.Descendants()
+            .Select(element => (string?)element.Attribute(XamlNamespace + "Name"))
+            .Where(name => !string.IsNullOrWhiteSpace(name))
+            .ToHashSet(StringComparer.Ordinal);
+
+        Assert.Contains("UpdateModArchiveMenuItem", names);
+        Assert.Contains("UpdateModFolderMenuItem", names);
+        Assert.Contains("ModVersionHistoryMenuItem", names);
+        var source = LoadTextFixture("ModVersionWindows.cs");
+        Assert.Contains("更新前会创建完整版本备份", source, StringComparison.Ordinal);
+        Assert.Contains("Mod 更新文件差异", source, StringComparison.Ordinal);
+        Assert.Contains("回滚前仍会备份当前版本", source, StringComparison.Ordinal);
+    }
+
     private static XDocument LoadFixture(string fileName)
     {
         var path = Path.Combine(AppContext.BaseDirectory, "Fixtures", fileName);
         Assert.True(File.Exists(path), $"UI fixture was not copied: {path}");
         return XDocument.Load(path, LoadOptions.PreserveWhitespace);
+    }
+
+    private static string LoadTextFixture(string fileName)
+    {
+        var path = Path.Combine(AppContext.BaseDirectory, "Fixtures", fileName);
+        Assert.True(File.Exists(path), $"UI fixture was not copied: {path}");
+        return File.ReadAllText(path);
     }
 }

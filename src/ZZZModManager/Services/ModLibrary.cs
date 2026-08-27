@@ -88,6 +88,10 @@ public interface IModLibrary
     CharacterGroupInfo DetectCharacterGroup(ModManifest manifest);
     void RegisterCustomCharacterGroup(CharacterGroupInfo group);
     ModManifest Install(ImportCandidate candidate, ImportReport report);
+    ModUpdatePreview PreviewUpdate(string id, string candidateDirectory);
+    IReadOnlyList<ModVersionBackup> GetVersionBackups(string id);
+    ModManifest Update(string id, ImportCandidate candidate, ImportReport report);
+    ModManifest Rollback(string id, string backupId);
     IReadOnlyList<UnmanagedDirectoryChange> QuarantineActiveUnmanagedDirectories();
     ModLibraryBatchResult ApplyStateBatch(string id, bool enabled, bool keepLoaded);
     ModLibraryBatchResult ApplyStateBatch(IEnumerable<ModStateRequest> requests, bool keepLoaded);
@@ -108,6 +112,7 @@ public sealed class ModLibrary : IModLibrary
     private readonly AppPaths _paths;
     private readonly JsonFileStore _store;
     private readonly IConflictDetector _conflictDetector;
+    private readonly ModVersionService _versions;
     private readonly LibraryState _state;
     private bool _discoveredGroupsRefreshed;
 
@@ -116,6 +121,7 @@ public sealed class ModLibrary : IModLibrary
         _paths = paths;
         _store = store;
         _conflictDetector = conflictDetector;
+        _versions = new ModVersionService(paths, store);
         _paths.Ensure();
         _state = _store.Load(_paths.LibraryFile, () => new LibraryState());
         _state.Mods ??= [];
@@ -209,13 +215,14 @@ public sealed class ModLibrary : IModLibrary
 
             var manifest = new ModManifest
             {
-                SchemaVersion = 2,
+                SchemaVersion = 3,
                 Id = id,
                 DisplayName = candidate.DisplayName,
                 SourcePath = candidate.SourcePath,
                 SourceSha256 = candidate.SourceSha256,
                 InstalledDirectory = Path.GetFileName(finalDirectory),
                 ImportedAt = DateTimeOffset.UtcNow,
+                VersionRevision = 1,
                 Enabled = false,
                 ImportStatus = report.Status,
                 Hashes = new HashSet<string>(report.Hashes, StringComparer.OrdinalIgnoreCase),
@@ -242,6 +249,58 @@ public sealed class ModLibrary : IModLibrary
             SafeDelete(finalDirectory);
             throw;
         }
+    }
+
+    public ModUpdatePreview PreviewUpdate(string id, string candidateDirectory)
+    {
+        var manifest = Find(id) ?? throw new InvalidOperationException("找不到该 Mod。");
+        return _versions.Compare(GetAbsolutePath(manifest), candidateDirectory);
+    }
+
+    public IReadOnlyList<ModVersionBackup> GetVersionBackups(string id)
+    {
+        _ = Find(id) ?? throw new InvalidOperationException("找不到该 Mod。");
+        return _versions.ListBackups(id);
+    }
+
+    public ModManifest Update(string id, ImportCandidate candidate, ImportReport report)
+    {
+        if (report.Status == ImportStatus.Blocked)
+        {
+            throw new InvalidOperationException("被阻止的 Mod 不能用于更新。");
+        }
+
+        var manifest = Find(id) ?? throw new InvalidOperationException("找不到该 Mod。");
+        return ReplaceVersion(
+            manifest,
+            candidate.StagedPath,
+            $"更新前 · v{Math.Max(1, manifest.VersionRevision)}",
+            () =>
+            {
+                manifest.SchemaVersion = 3;
+                manifest.SourcePath = candidate.SourcePath;
+                manifest.SourceSha256 = candidate.SourceSha256;
+                manifest.ImportStatus = report.Status;
+                manifest.Hashes = new HashSet<string>(report.Hashes, StringComparer.OrdinalIgnoreCase);
+                manifest.Dependencies = [.. report.Dependencies];
+                manifest.AppliedFixes = [.. report.Fixes];
+                manifest.ReportFile = "import-report.json";
+                manifest.UpdatedAt = DateTimeOffset.UtcNow;
+                manifest.VersionRevision = Math.Max(1, manifest.VersionRevision) + 1;
+            },
+            report);
+    }
+
+    public ModManifest Rollback(string id, string backupId)
+    {
+        var manifest = Find(id) ?? throw new InvalidOperationException("找不到该 Mod。");
+        var resolved = _versions.ResolveBackup(id, backupId);
+        return ReplaceVersion(
+            manifest,
+            resolved.ContentDirectory,
+            $"回滚前 · v{Math.Max(1, manifest.VersionRevision)}",
+            () => ApplyVersionSnapshot(manifest, resolved.Backup.Snapshot),
+            report: null);
     }
 
     /// <summary>
@@ -790,9 +849,10 @@ public sealed class ModLibrary : IModLibrary
             ref changed);
         foreach (var manifest in _state.Mods)
         {
-            if (manifest.SchemaVersion < 2)
+            if (manifest.SchemaVersion < 3)
             {
-                manifest.SchemaVersion = 2;
+                manifest.SchemaVersion = 3;
+                manifest.VersionRevision = Math.Max(1, manifest.VersionRevision);
                 changed = true;
             }
 
@@ -969,6 +1029,144 @@ public sealed class ModLibrary : IModLibrary
         };
     }
 
+    private ModManifest ReplaceVersion(
+        ModManifest manifest,
+        string sourceDirectory,
+        string backupReason,
+        Action applyMetadata,
+        ImportReport? report)
+    {
+        var currentDirectory = ResolveExistingDirectory(manifest).Path;
+        if (!FileSystemSafety.IsWithin(_paths.ModsRoot, currentDirectory))
+        {
+            throw new InvalidOperationException("拒绝替换 Mod 库之外的目录。");
+        }
+
+        _ = _versions.CreateBackup(manifest, currentDirectory, backupReason);
+        var safeId = FileSystemSafety.SanitizeDirectoryName(manifest.Id);
+        var operationId = Guid.NewGuid().ToString("N");
+        var incomingDirectory = Path.Combine(_paths.ModsRoot, $"DISABLED_UPDATING_{safeId}-{operationId}");
+        var displacedDirectory = Path.Combine(_paths.ModsRoot, $"DISABLED_REPLACED_{safeId}-{operationId}");
+        var previous = CaptureVersionState(manifest);
+        var currentMoved = false;
+        var incomingActivated = false;
+        try
+        {
+            FileSystemSafety.CopyDirectory(sourceDirectory, incomingDirectory);
+            if (report is not null)
+            {
+                var reportPath = Path.Combine(incomingDirectory, "import-report.json");
+                _store.Save(reportPath, report);
+                if (!File.Exists(reportPath))
+                {
+                    throw new IOException("更新诊断报告写入失败。");
+                }
+            }
+
+            Directory.Move(currentDirectory, displacedDirectory);
+            currentMoved = true;
+            Directory.Move(incomingDirectory, currentDirectory);
+            incomingActivated = true;
+            applyMetadata();
+            manifest.PreviewFile = ModPreviewLocator.Find(currentDirectory);
+            ResetLiveSwitch(manifest);
+            _discoveredGroupsRefreshed = false;
+            SaveState();
+            SafeDelete(displacedDirectory);
+            return manifest;
+        }
+        catch
+        {
+            RestoreVersionState(manifest, previous);
+            if (incomingActivated
+                && Directory.Exists(currentDirectory)
+                && Directory.Exists(displacedDirectory))
+            {
+                SafeDelete(currentDirectory);
+            }
+
+            if (currentMoved
+                && !Directory.Exists(currentDirectory)
+                && Directory.Exists(displacedDirectory))
+            {
+                Directory.Move(displacedDirectory, currentDirectory);
+            }
+
+            SafeDelete(incomingDirectory);
+            try
+            {
+                SaveState();
+            }
+            catch
+            {
+                // Preserve the version-operation failure; the original directory
+                // and in-memory manifest have already been restored.
+            }
+
+            throw;
+        }
+    }
+
+    private static ModVersionState CaptureVersionState(ModManifest manifest) => new(
+        new ModVersionSnapshot
+        {
+            SourcePath = manifest.SourcePath,
+            SourceSha256 = manifest.SourceSha256,
+            ImportStatus = manifest.ImportStatus,
+            Hashes = new HashSet<string>(manifest.Hashes, StringComparer.OrdinalIgnoreCase),
+            Dependencies = [.. manifest.Dependencies],
+            AppliedFixes = [.. manifest.AppliedFixes],
+            ReportFile = manifest.ReportFile,
+            PreviewFile = manifest.PreviewFile,
+            UpdatedAt = manifest.UpdatedAt,
+            VersionRevision = manifest.VersionRevision
+        },
+        manifest.LiveSwitchKey,
+        manifest.LiveSwitchVariable,
+        manifest.LiveSwitchPrepared,
+        manifest.LiveSwitchSlot,
+        manifest.LiveSwitchRuleVersion,
+        manifest.LiveSwitchCapability,
+        manifest.LiveSwitchBlockReason);
+
+    private static void ApplyVersionSnapshot(ModManifest manifest, ModVersionSnapshot snapshot)
+    {
+        manifest.SchemaVersion = 3;
+        manifest.SourcePath = snapshot.SourcePath;
+        manifest.SourceSha256 = snapshot.SourceSha256;
+        manifest.ImportStatus = snapshot.ImportStatus;
+        manifest.Hashes = new HashSet<string>(snapshot.Hashes, StringComparer.OrdinalIgnoreCase);
+        manifest.Dependencies = [.. snapshot.Dependencies];
+        manifest.AppliedFixes = [.. snapshot.AppliedFixes];
+        manifest.ReportFile = snapshot.ReportFile;
+        manifest.PreviewFile = snapshot.PreviewFile;
+        manifest.UpdatedAt = snapshot.UpdatedAt;
+        manifest.VersionRevision = Math.Max(1, snapshot.VersionRevision);
+    }
+
+    private static void RestoreVersionState(ModManifest manifest, ModVersionState state)
+    {
+        ApplyVersionSnapshot(manifest, state.Snapshot);
+        manifest.LiveSwitchKey = state.LiveSwitchKey;
+        manifest.LiveSwitchVariable = state.LiveSwitchVariable;
+        manifest.LiveSwitchPrepared = state.LiveSwitchPrepared;
+        manifest.LiveSwitchSlot = state.LiveSwitchSlot;
+        manifest.LiveSwitchRuleVersion = state.LiveSwitchRuleVersion;
+        manifest.LiveSwitchCapability = state.LiveSwitchCapability;
+        manifest.LiveSwitchBlockReason = state.LiveSwitchBlockReason;
+    }
+
+    private static void ResetLiveSwitch(ModManifest manifest)
+    {
+        manifest.LiveSwitchKey = string.Empty;
+        manifest.LiveSwitchVariable = string.Empty;
+        manifest.LiveSwitchPrepared = false;
+        manifest.LiveSwitchSlot = null;
+        manifest.LiveSwitchRuleVersion = string.Empty;
+        manifest.LiveSwitchCapability = LiveSwitchCapability.RequiresReload;
+        manifest.LiveSwitchBlockReason = null;
+    }
+
     private void SaveState() => _store.Save(_paths.LibraryFile, _state);
 
     private static bool SameId(ModManifest left, ModManifest right) =>
@@ -1005,4 +1203,14 @@ public sealed class ModLibrary : IModLibrary
         string TargetPath);
 
     private sealed record DirectoryResolution(string Path, bool ManifestChanged);
+
+    private sealed record ModVersionState(
+        ModVersionSnapshot Snapshot,
+        string LiveSwitchKey,
+        string LiveSwitchVariable,
+        bool LiveSwitchPrepared,
+        int? LiveSwitchSlot,
+        string LiveSwitchRuleVersion,
+        LiveSwitchCapability LiveSwitchCapability,
+        string? LiveSwitchBlockReason);
 }

@@ -1,12 +1,22 @@
 # 绝区零本地 Mod 管理器
 
-仅支持《绝区零》的 Windows x64 WPF Mod 管理器。程序、运行核心、Mod、配置、日志和备份统一保存在 `D:\ZZZMod`，不会修改 `D:\Mod\zzz_mods\XXMI-ZZZ` 中的原始文件。
+当前版本：**0.2.2**。仅支持《绝区零》的 Windows x64 WPF Mod 管理器。程序、运行核心、Mod、配置、日志和备份统一保存在 `D:\ZZZMod`，不会修改 `D:\Mod\zzz_mods\XXMI-ZZZ` 中的原始文件。
+
+### 游戏原始头脸预览
+
+当 Mod 只替换身体而没有脸部/头发缓冲时，3D 预览可从游戏的 FrameAnalysis 转储中筛选对应角色的原始头脸，并按游戏版本缓存到 `Cache\BaseCharacters`。目前首个内置配置为 Remielle · Moonlight Whispers。
+
+1. 在识别到该角色的 3D 预览窗口中点击“1. 准备安全采集”。程序会先备份 `d3dx.ini`，启用 3Dmigoto FrameAnalysis 上下文，再将 F8 分析限制为纹理、顶点缓冲和索引缓冲，不采集渲染目标或常量缓冲。
+2. 完全退出并重新启动游戏。3Dmigoto 在设备创建时选择 FrameAnalysis 上下文，因此快捷键重载配置无效。让对应角色单独出现在画面中，按 `F8`，等待分析提示消失。
+3. 回到预览窗口点击“2. 导入最新 F8 转储”。缓存只保存在管理器目录，不写入 Mod 或游戏文件。
 
 ## 主要功能
 
 - 首页以角色分组展示 Mod 卡片；同一角色默认单选，RabbitFX 等通用依赖不参与角色单选。
 - 识别 Mod 根目录中的 `preview.png`，提供限宽缩略图、点击放大、缩放与 Esc 关闭。
-- 对包含 XXMI `Position.buf` / `Texcoord.buf` / `.ib` 的 Mod 提供离线 3D 静态预览；可读取 INI 绑定的 DDS Diffuse（含 BC7）并显示基础 Alpha 透明，无需安装或启动游戏。未知缓冲布局会跳过，不猜测其他游戏格式。
+- 对包含 XXMI `Position.buf` / `Texcoord.buf` / `.ib` 的 Mod 提供离线 3D 静态预览；支持外观变量、损坏部件隔离、LRU 缓存、兼容诊断和 PNG 导出。
+- 3D 预览可读取 INI 绑定的 DDS Diffuse、NormalMap、LightMap 与 MaterialMap，支持 BC1–BC7（含 BC6H）；内置可选 CPU Shader、法线光照和贴图轮廓增强。实验性增强默认关闭，打开预览仍优先保持原始 Diffuse 效果。
+- 从用户选择的本地 ZIP、7Z、RAR 或文件夹更新已有 Mod；确认前显示逐文件新增、修改、删除差异，更新前自动创建完整版本备份，并可从历史记录回滚。
 - ZIP、7Z、RAR 和文件夹导入，支持多层包装目录、多个候选 Mod、路径穿越防护、文件数与解压大小限制。
 - 扫描 INI 引用、资源声明、哈希和 RabbitFX 依赖，只对安装副本应用可确定的兼容修复并保存 `import-report.json`。
 - 运行中使用管理器内部绝对状态通道即时启用/禁用；首次接管、导入或目录结构变化时才按需发送一次管理器安全重载命令。
@@ -32,7 +42,7 @@
 - `D:\ZZZMod\Mods`：受管 Mod 库。
 - `D:\ZZZMod\Runtime\ZZMI`：离线恢复后的 ZZMI 核心。
 - `D:\ZZZMod\Logs`：统一日志。
-- `D:\ZZZMod\Backups`：运行核心与配置备份。
+- `D:\ZZZMod\Backups`：运行核心与配置备份；Mod 版本位于 `Backups\Mods\<Mod ID>`。
 - `D:\ZZZMod\UI`：自定义背景图。
 - `D:\ZZZMod\artifacts\win-x64`：Windows x64 单文件发布产物。
 
@@ -50,8 +60,8 @@ dotnet publish .\src\ZZZModManager\ZZZModManager.csproj -c Release -r win-x64 --
 
 ## 安全边界
 
-程序只处理本地文件、运行核心配置和用户发起的游戏启动，不包含联网更新、账号操作、反作弊绕过或额外 DLL 注入。游戏更新可能使作者提供的哈希失效；管理器不会猜测新哈希或生成缺失模型。
+程序只处理本地文件、运行核心配置和用户发起的游戏启动；Mod 更新来源也仅限用户手动选择的本地归档或文件夹。程序不包含联网更新、账号操作、反作弊绕过或额外 DLL 注入。游戏更新可能使作者提供的哈希失效；管理器不会猜测新哈希或生成缺失模型。
 
 ## 许可证
 
-应用源码使用 GPLv3。SharpCompress、XXMI/ZZMI 和第三方 Mod 仍受各自上游许可证约束；RabbitFX 不作为程序内嵌资源重新分发。BC7 解码部分基于 bc7enc / GARbro 的 MIT 实现，源文件中保留其版权与许可声明。
+应用源码使用 GPLv3。SharpCompress、BCnEncoder.NET、XXMI/ZZMI 和第三方 Mod 仍受各自上游许可证约束；RabbitFX 不作为程序内嵌资源重新分发。BC6H 解码使用 BCnEncoder.NET 2.3.0；BC7 解码部分基于 bc7enc / GARbro 的 MIT 实现，源文件中保留其版权与许可声明。
