@@ -323,6 +323,13 @@
                                                                                 <MenuItem Header="打开安装目录" Tag="{Binding}" Click="OpenModDirectory_Click" />
                                                                                 <MenuItem Header="更改角色分组" Tag="{Binding}" Click="ChangeGroup_Click" />
                                                                                 <Separator />
+                                                                                <MenuItem x:Name="UpdateModArchiveMenuItem" Header="从压缩包更新…"
+                                                                                          Tag="{Binding}" Click="UpdateModArchive_Click" />
+                                                                                <MenuItem x:Name="UpdateModFolderMenuItem" Header="从文件夹更新…"
+                                                                                          Tag="{Binding}" Click="UpdateModFolder_Click" />
+                                                                                <MenuItem x:Name="ModVersionHistoryMenuItem" Header="版本历史与回滚…"
+                                                                                          Tag="{Binding}" Click="ModVersionHistory_Click" />
+                                                                                <Separator />
                                                                                 <MenuItem Style="{StaticResource DangerMenuItem}" Header="删除安装副本"
                                                                                           Tag="{Binding}" Click="DeleteMod_Click" />
                                                                             </ContextMenu>

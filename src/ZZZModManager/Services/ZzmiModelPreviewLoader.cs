@@ -1,4 +1,5 @@
 using System.Buffers.Binary;
+using System.Diagnostics;
 using System.Globalization;
 using System.Numerics;
 using System.Text.RegularExpressions;
@@ -10,17 +11,40 @@ public interface IModModelPreviewLoader
 {
     bool CanLoad(string modDirectory);
     ModelPreviewScene Load(string modDirectory);
+    ModelPreviewScene Load(string modDirectory, IReadOnlyDictionary<string, double> variantValues);
+    void Invalidate(string modDirectory);
 }
 
 public sealed record ModelPreviewScene(
     IReadOnlyList<ModelPreviewMesh> Meshes,
     Vector3 Minimum,
     Vector3 Maximum,
-    IReadOnlyList<string> Warnings)
+    IReadOnlyList<string> Warnings,
+    IReadOnlyList<ModelPreviewVariant> Variants,
+    ModelPreviewDiagnostics Diagnostics)
 {
     public int VertexCount => Meshes.Sum(mesh => mesh.Positions.Length);
     public int TriangleCount => Meshes.Sum(mesh => mesh.Indices.Length / 3);
 }
+
+public sealed record ModelPreviewVariant(
+    string Key,
+    string Variable,
+    string SourceFile,
+    double DefaultValue,
+    double SelectedValue,
+    IReadOnlyList<double> Values)
+{
+    public string DisplayName => $"{Variable.TrimStart('$')} · {Path.GetFileName(SourceFile)}";
+}
+
+public sealed record ModelPreviewDiagnostics(
+    bool CacheHit,
+    TimeSpan LoadDuration,
+    int SourceFileCount,
+    int TextureCount,
+    int DownsampledTextureCount,
+    long RetainedTextureBytes);
 
 public sealed record ModelPreviewMesh(
     string Name,
@@ -29,14 +53,22 @@ public sealed record ModelPreviewMesh(
     Vector3[] Normals,
     Vector2[] TextureCoordinates,
     int[] Indices,
-    ModelPreviewTexture? DiffuseTexture);
+    ModelPreviewTexture? DiffuseTexture,
+    ModelPreviewTexture? NormalTexture,
+    ModelPreviewTexture? LightTexture,
+    ModelPreviewTexture? MaterialTexture);
 
 public sealed record ModelPreviewTexture(
     string SourceFile,
     int Width,
     int Height,
     byte[] Bgra32Pixels,
-    bool HasTransparency);
+    bool HasTransparency)
+{
+    public int OriginalWidth { get; init; } = Width;
+    public int OriginalHeight { get; init; } = Height;
+    public bool IsDownsampled => Width != OriginalWidth || Height != OriginalHeight;
+}
 
 public sealed class ModelPreviewException(string message) : Exception(message);
 
@@ -51,6 +83,17 @@ public sealed partial class ZzmiModelPreviewLoader : IModModelPreviewLoader
     private const int MaximumIniFiles = 128;
     private const int MaximumVerticesPerStream = 1_000_000;
     private const int MaximumIndicesPerMesh = 6_000_000;
+    internal const int MaximumPreviewTextureDimension = 1024;
+    private const int MaximumCachedScenes = 8;
+    private const long MaximumCachedSceneBytes = 256L * 1024 * 1024;
+
+    private readonly object _cacheGate = new();
+    private readonly Dictionary<SceneCacheKey, LinkedListNode<SceneCacheEntry>> _sceneCache = [];
+    private readonly LinkedList<SceneCacheEntry> _sceneLru = [];
+    private long _cachedSceneBytes;
+
+    private static readonly IReadOnlyDictionary<string, double> EmptyVariantValues =
+        new Dictionary<string, double>(StringComparer.OrdinalIgnoreCase);
 
     private static readonly EnumerationOptions Enumeration = new()
     {
@@ -98,13 +141,19 @@ public sealed partial class ZzmiModelPreviewLoader : IModModelPreviewLoader
         return false;
     }
 
-    public ModelPreviewScene Load(string modDirectory)
+    public ModelPreviewScene Load(string modDirectory) => Load(modDirectory, EmptyVariantValues);
+
+    public ModelPreviewScene Load(
+        string modDirectory,
+        IReadOnlyDictionary<string, double> variantValues)
     {
         if (!Directory.Exists(modDirectory))
         {
             throw new ModelPreviewException("Mod 安装目录不存在，无法生成 3D 预览。");
         }
 
+        ArgumentNullException.ThrowIfNull(variantValues);
+        var stopwatch = Stopwatch.StartNew();
         var root = Path.GetFullPath(modDirectory);
         var iniPaths = EnumerateIniFiles(root).ToList();
         if (iniPaths.Count == 0)
@@ -112,16 +161,26 @@ public sealed partial class ZzmiModelPreviewLoader : IModModelPreviewLoader
             throw new ModelPreviewException("没有找到包含模型资源声明的 INI 文件。");
         }
 
+        var stamp = ComputeSourceStamp(root);
+        var cacheKey = new SceneCacheKey(NormalizeRoot(root), stamp.Value, BuildSelectionKey(variantValues));
+        if (TryGetCachedScene(cacheKey, stopwatch.Elapsed, out var cached))
+        {
+            return cached;
+        }
+
         var meshes = new List<ModelPreviewMesh>();
         var warnings = new List<string>();
+        var variants = new List<ModelPreviewVariant>();
         var textureCache = new Dictionary<string, ModelPreviewTexture?>(StringComparer.OrdinalIgnoreCase);
         foreach (var iniPath in iniPaths)
         {
             try
             {
-                LoadIni(root, iniPath, meshes, warnings, textureCache);
+                var document = ApplyVariantValues(ParseDocument(root, iniPath), variantValues);
+                variants.AddRange(document.Variants.Select(variant => variant.Selected));
+                LoadIni(document, meshes, warnings, textureCache);
             }
-            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidDataException)
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidDataException or OverflowException)
             {
                 warnings.Add($"{Path.GetFileName(iniPath)}：{ex.Message}");
             }
@@ -141,7 +200,45 @@ public sealed partial class ZzmiModelPreviewLoader : IModModelPreviewLoader
             maximum = Vector3.Max(maximum, position);
         }
 
-        return new ModelPreviewScene(meshes, minimum, maximum, warnings);
+        stopwatch.Stop();
+        var textures = meshes
+            .SelectMany(EnumerateTextures)
+            .Where(texture => texture is not null)
+            .Cast<ModelPreviewTexture>()
+            .DistinctBy(texture => texture.SourceFile, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+        var scene = new ModelPreviewScene(
+            meshes,
+            minimum,
+            maximum,
+            warnings,
+            variants,
+            new ModelPreviewDiagnostics(
+                false,
+                stopwatch.Elapsed,
+                stamp.FileCount,
+                textures.Count,
+                textures.Count(texture => texture.IsDownsampled),
+                textures.Sum(texture => (long)texture.Bgra32Pixels.Length)));
+        AddCachedScene(cacheKey, scene);
+        return scene;
+    }
+
+    public void Invalidate(string modDirectory)
+    {
+        if (string.IsNullOrWhiteSpace(modDirectory))
+        {
+            return;
+        }
+
+        var root = NormalizeRoot(Path.GetFullPath(modDirectory));
+        lock (_cacheGate)
+        {
+            foreach (var entry in _sceneLru.Where(entry => string.Equals(entry.Key.Root, root, StringComparison.OrdinalIgnoreCase)).ToList())
+            {
+                RemoveCachedScene(entry.Key);
+            }
+        }
     }
 
     private static IEnumerable<string> EnumerateIniFiles(string root)
@@ -160,13 +257,11 @@ public sealed partial class ZzmiModelPreviewLoader : IModModelPreviewLoader
     }
 
     private static void LoadIni(
-        string root,
-        string iniPath,
+        IniDocument document,
         List<ModelPreviewMesh> destination,
         List<string> warnings,
         Dictionary<string, ModelPreviewTexture?> textureCache)
     {
-        var document = ParseDocument(root, iniPath);
         var positionResources = document.Resources.Values
             .Where(resource => resource.FilePath.EndsWith("Position.buf", StringComparison.OrdinalIgnoreCase))
             .Where(resource => resource.Stride == 40 && File.Exists(resource.FilePath))
@@ -183,84 +278,133 @@ public sealed partial class ZzmiModelPreviewLoader : IModModelPreviewLoader
         var streams = new Dictionary<string, VertexStreams>(StringComparer.OrdinalIgnoreCase);
         var indices = new Dictionary<string, uint[]>(StringComparer.OrdinalIgnoreCase);
         var usedIndexResources = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var declaredIndexResources = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
         foreach (var section in document.Sections)
         {
-            var indexResourceName = FindIndexResourceReference(section.Lines);
-            if (indexResourceName is null
-                || !document.Resources.TryGetValue(indexResourceName, out var indexResource)
-                || !indexResources.Contains(indexResource))
+            var declaredIndexResourceName = FindIndexResourceReference(section.Lines);
+            if (declaredIndexResourceName is not null)
             {
-                continue;
+                declaredIndexResources.Add(declaredIndexResourceName);
             }
 
-            var positionResource = MatchPositionResource(indexResource, positionResources);
-            if (positionResource is null)
+            try
             {
-                warnings.Add($"{Path.GetFileName(indexResource.FilePath)}：没有匹配的 Position.buf。");
-                continue;
-            }
+                var indexResourceName = FindActiveIndexResourceReference(section, document.Constants);
+                if (indexResourceName is null
+                    || !document.Resources.TryGetValue(indexResourceName, out var indexResource)
+                    || !indexResources.Contains(indexResource))
+                {
+                    continue;
+                }
 
-            var vertexStreams = GetVertexStreams(document, positionResource, streams);
-            var sourceIndices = GetIndices(indexResource, indices);
-            var drawRanges = ParseActiveDrawRanges(section, document.Constants);
-            var selectedIndices = SelectIndices(sourceIndices, drawRanges, vertexStreams.Positions.Length);
-            if (selectedIndices.Length == 0)
-            {
-                continue;
-            }
+                var positionResource = MatchPositionResource(indexResource, positionResources);
+                if (positionResource is null)
+                {
+                    warnings.Add($"{Path.GetFileName(indexResource.FilePath)}：没有匹配的 Position.buf。");
+                    continue;
+                }
 
-            var diffuseTexture = GetDiffuseTexture(section, document, warnings, textureCache);
-            if (diffuseTexture is null && drawRanges.Count == 0)
-            {
-                diffuseTexture = GetDiffuseTexture(
+                var vertexStreams = GetVertexStreams(document, positionResource, streams);
+                var sourceIndices = GetIndices(indexResource, indices);
+                var drawRanges = ParseActiveDrawRanges(section, document.Constants);
+                var hasConditionalDraws = section.Lines.Any(line => DrawIndexedRegex().IsMatch(line));
+                if (drawRanges.Count == 0 && hasConditionalDraws)
+                {
+                    continue;
+                }
+
+                var selectedIndices = SelectIndices(sourceIndices, drawRanges, vertexStreams.Positions.Length);
+                if (selectedIndices.Length == 0)
+                {
+                    continue;
+                }
+
+                var includeInactiveBranches = drawRanges.Count == 0;
+                var diffuseTexture = GetTexture(
                     section,
                     document,
                     warnings,
                     textureCache,
-                    includeInactiveBranches: true);
+                    DiffuseBindingRegex(),
+                    includeInactiveBranches);
+                var lightTexture = GetTexture(
+                    section,
+                    document,
+                    warnings,
+                    textureCache,
+                    LightMapBindingRegex(),
+                    includeInactiveBranches);
+                var normalTexture = GetTexture(
+                    section,
+                    document,
+                    warnings,
+                    textureCache,
+                    NormalMapBindingRegex(),
+                    includeInactiveBranches);
+                var materialTexture = GetTexture(
+                    section,
+                    document,
+                    warnings,
+                    textureCache,
+                    MaterialMapBindingRegex(),
+                    includeInactiveBranches);
+                destination.Add(CreateMesh(
+                    indexResource.FilePath,
+                    vertexStreams,
+                    selectedIndices,
+                    diffuseTexture,
+                    normalTexture,
+                    lightTexture,
+                    materialTexture));
+                usedIndexResources.Add(indexResource.Name);
             }
-            destination.Add(CreateMesh(indexResource.FilePath, vertexStreams, selectedIndices, diffuseTexture));
-            usedIndexResources.Add(indexResource.Name);
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidDataException or OverflowException)
+            {
+                warnings.Add($"{Path.GetFileName(document.IniPath)} [{section.Name}]：{ex.Message}");
+            }
         }
 
         // Some simple mods bind an IB directly and never issue custom drawindexed ranges.
         // Rendering the full IB is deterministic in that case and keeps those mods previewable.
-        foreach (var indexResource in indexResources.Where(resource => !usedIndexResources.Contains(resource.Name)))
+        foreach (var indexResource in indexResources.Where(resource =>
+                     !usedIndexResources.Contains(resource.Name)
+                     && !declaredIndexResources.Contains(resource.Name)))
         {
-            var positionResource = MatchPositionResource(indexResource, positionResources);
-            if (positionResource is null)
+            try
             {
-                continue;
-            }
+                var positionResource = MatchPositionResource(indexResource, positionResources);
+                if (positionResource is null)
+                {
+                    continue;
+                }
 
-            var vertexStreams = GetVertexStreams(document, positionResource, streams);
-            var sourceIndices = GetIndices(indexResource, indices);
-            var selectedIndices = SelectIndices(sourceIndices, [], vertexStreams.Positions.Length);
-            if (selectedIndices.Length > 0)
+                var vertexStreams = GetVertexStreams(document, positionResource, streams);
+                var sourceIndices = GetIndices(indexResource, indices);
+                var selectedIndices = SelectIndices(sourceIndices, [], vertexStreams.Positions.Length);
+                if (selectedIndices.Length > 0)
+                {
+                    destination.Add(CreateMesh(indexResource.FilePath, vertexStreams, selectedIndices, null, null, null, null));
+                }
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidDataException or OverflowException)
             {
-                var section = document.Sections.FirstOrDefault(candidate => string.Equals(
-                    FindIndexResourceReference(candidate.Lines),
-                    indexResource.Name,
-                    StringComparison.OrdinalIgnoreCase));
-                var diffuseTexture = section is null
-                    ? null
-                    : GetDiffuseTexture(section, document, warnings, textureCache, includeInactiveBranches: true);
-                destination.Add(CreateMesh(indexResource.FilePath, vertexStreams, selectedIndices, diffuseTexture));
+                warnings.Add($"{Path.GetFileName(indexResource.FilePath)}：{ex.Message}");
             }
         }
     }
 
-    private static ModelPreviewTexture? GetDiffuseTexture(
+    private static ModelPreviewTexture? GetTexture(
         IniSection section,
         IniDocument document,
         List<string> warnings,
         Dictionary<string, ModelPreviewTexture?> cache,
+        Regex bindingRegex,
         bool includeInactiveBranches = false)
     {
         var resourceName = includeInactiveBranches
-            ? FindDiffuseResourceReference(section.Lines)
-            : FindActiveDiffuseResourceReference(section, document.Constants);
+            ? FindTextureResourceReference(section.Lines, bindingRegex)
+            : FindActiveTextureResourceReference(section, document.Constants, bindingRegex);
         if (resourceName is null
             || !document.Resources.TryGetValue(resourceName, out var resource)
             || !resource.FilePath.EndsWith(".dds", StringComparison.OrdinalIgnoreCase)
@@ -276,7 +420,7 @@ public sealed partial class ZzmiModelPreviewLoader : IModModelPreviewLoader
 
         try
         {
-            var texture = DdsTextureDecoder.Decode(resource.FilePath);
+            var texture = DdsTextureDecoder.Decode(resource.FilePath, MaximumPreviewTextureDimension);
             cache[resource.FilePath] = texture;
             return texture;
         }
@@ -292,7 +436,10 @@ public sealed partial class ZzmiModelPreviewLoader : IModModelPreviewLoader
         string indexPath,
         VertexStreams streams,
         IReadOnlyList<int> sourceIndices,
-        ModelPreviewTexture? diffuseTexture)
+        ModelPreviewTexture? diffuseTexture,
+        ModelPreviewTexture? normalTexture,
+        ModelPreviewTexture? lightTexture,
+        ModelPreviewTexture? materialTexture)
     {
         var remap = new Dictionary<int, int>();
         var positions = new List<Vector3>();
@@ -321,7 +468,10 @@ public sealed partial class ZzmiModelPreviewLoader : IModModelPreviewLoader
             normals.ToArray(),
             textureCoordinates.ToArray(),
             indices,
-            diffuseTexture);
+            diffuseTexture,
+            normalTexture,
+            lightTexture,
+            materialTexture);
     }
 
     private static VertexStreams GetVertexStreams(
@@ -536,13 +686,13 @@ public sealed partial class ZzmiModelPreviewLoader : IModModelPreviewLoader
         return null;
     }
 
-    private static string? FindActiveDiffuseResourceReference(
+    private static string? FindActiveIndexResourceReference(
         IniSection section,
         IReadOnlyDictionary<string, double> constants)
     {
         foreach (var line in EnumerateActiveLines(section, constants))
         {
-            var match = DiffuseBindingRegex().Match(line);
+            var match = IndexBindingRegex().Match(line);
             if (match.Success)
             {
                 return match.Groups["resource"].Value;
@@ -552,11 +702,14 @@ public sealed partial class ZzmiModelPreviewLoader : IModModelPreviewLoader
         return null;
     }
 
-    private static string? FindDiffuseResourceReference(IEnumerable<string> lines)
+    private static string? FindActiveTextureResourceReference(
+        IniSection section,
+        IReadOnlyDictionary<string, double> constants,
+        Regex bindingRegex)
     {
-        foreach (var line in lines)
+        foreach (var line in EnumerateActiveLines(section, constants))
         {
-            var match = DiffuseBindingRegex().Match(line);
+            var match = bindingRegex.Match(line);
             if (match.Success)
             {
                 return match.Groups["resource"].Value;
@@ -564,6 +717,28 @@ public sealed partial class ZzmiModelPreviewLoader : IModModelPreviewLoader
         }
 
         return null;
+    }
+
+    private static string? FindTextureResourceReference(IEnumerable<string> lines, Regex bindingRegex)
+    {
+        foreach (var line in lines)
+        {
+            var match = bindingRegex.Match(line);
+            if (match.Success)
+            {
+                return match.Groups["resource"].Value;
+            }
+        }
+
+        return null;
+    }
+
+    private static IEnumerable<ModelPreviewTexture?> EnumerateTextures(ModelPreviewMesh mesh)
+    {
+        yield return mesh.DiffuseTexture;
+        yield return mesh.NormalTexture;
+        yield return mesh.LightTexture;
+        yield return mesh.MaterialTexture;
     }
 
     private static IReadOnlyList<DrawRange> ParseActiveDrawRanges(
@@ -603,11 +778,15 @@ public sealed partial class ZzmiModelPreviewLoader : IModModelPreviewLoader
                 continue;
             }
 
-            if (line.StartsWith("else if ", StringComparison.OrdinalIgnoreCase))
+            if (line.StartsWith("else if ", StringComparison.OrdinalIgnoreCase)
+                || line.StartsWith("elif ", StringComparison.OrdinalIgnoreCase))
             {
                 if (conditions.TryPop(out var frame))
                 {
-                    var condition = EvaluateExpression(line[8..], constants);
+                    var expression = line.StartsWith("elif ", StringComparison.OrdinalIgnoreCase)
+                        ? line[5..]
+                        : line[8..];
+                    var condition = EvaluateExpression(expression, constants);
                     var branchActive = frame.ParentActive && !frame.BranchTaken && condition;
                     conditions.Push(frame with { BranchTaken = frame.BranchTaken || condition, Active = branchActive });
                     active = branchActive;
@@ -675,13 +854,14 @@ public sealed partial class ZzmiModelPreviewLoader : IModModelPreviewLoader
         var comparison = ComparisonRegex().Match(expression);
         if (!comparison.Success)
         {
-            return expression.Equals("1", StringComparison.OrdinalIgnoreCase);
+            var variableExpression = VariableExpressionRegex().Match(expression);
+            return variableExpression.Success
+                ? ResolveVariable(variableExpression.Groups["variable"].Value, constants) != 0
+                : expression.Equals("1", StringComparison.OrdinalIgnoreCase);
         }
 
         var variable = comparison.Groups["variable"].Value;
-        var left = constants.TryGetValue(variable, out var configured)
-            ? configured
-            : variable.Contains("ZZZMM", StringComparison.OrdinalIgnoreCase) ? 1 : 0;
+        var left = ResolveVariable(variable, constants);
         if (!double.TryParse(comparison.Groups["value"].Value, NumberStyles.Float, CultureInfo.InvariantCulture, out var right))
         {
             return false;
@@ -698,6 +878,14 @@ public sealed partial class ZzmiModelPreviewLoader : IModModelPreviewLoader
             _ => false
         };
     }
+
+    private static double ResolveVariable(string variable, IReadOnlyDictionary<string, double> constants) =>
+        constants.TryGetValue(variable, out var configured)
+            ? configured
+            : variable.Contains("ZZZModManager", StringComparison.OrdinalIgnoreCase)
+                || variable.Contains("ZZZMM", StringComparison.OrdinalIgnoreCase)
+                ? 1
+                : 0;
 
     private static IniDocument ParseDocument(string root, string iniPath)
     {
@@ -720,6 +908,8 @@ public sealed partial class ZzmiModelPreviewLoader : IModModelPreviewLoader
 
         var resources = new Dictionary<string, ResourceDefinition>(StringComparer.OrdinalIgnoreCase);
         var constants = new Dictionary<string, double>(StringComparer.OrdinalIgnoreCase);
+        var persistentVariables = new List<PersistentVariable>();
+        var persistentNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (var section in sections)
         {
             foreach (var line in section.Lines)
@@ -729,6 +919,20 @@ public sealed partial class ZzmiModelPreviewLoader : IModModelPreviewLoader
                     && double.TryParse(constant.Groups["value"].Value, NumberStyles.Float, CultureInfo.InvariantCulture, out var value))
                 {
                     constants[constant.Groups["variable"].Value] = value;
+                }
+
+                var persistent = PersistentVariableRegex().Match(line);
+                if (persistent.Success && persistentNames.Add(persistent.Groups["variable"].Value))
+                {
+                    var defaultValue = double.TryParse(
+                        persistent.Groups["value"].Value,
+                        NumberStyles.Float,
+                        CultureInfo.InvariantCulture,
+                        out var parsedDefault)
+                        ? parsedDefault
+                        : 0;
+                    persistentVariables.Add(new PersistentVariable(persistent.Groups["variable"].Value, defaultValue));
+                    constants[persistent.Groups["variable"].Value] = defaultValue;
                 }
             }
 
@@ -779,7 +983,278 @@ public sealed partial class ZzmiModelPreviewLoader : IModModelPreviewLoader
             resources[section.Name] = new ResourceDefinition(section.Name, path, stride, format);
         }
 
-        return new IniDocument(sections, resources, constants);
+        var variants = BuildVariantDefinitions(root, iniPath, sections, persistentVariables);
+        return new IniDocument(iniPath, sections, resources, constants, variants);
+    }
+
+    private static IReadOnlyList<VariantDefinition> BuildVariantDefinitions(
+        string root,
+        string iniPath,
+        IReadOnlyList<IniSection> sections,
+        IReadOnlyList<PersistentVariable> persistentVariables)
+    {
+        if (persistentVariables.Count == 0)
+        {
+            return [];
+        }
+
+        var values = persistentVariables.ToDictionary(
+            variable => variable.Name,
+            variable => new List<double> { variable.DefaultValue },
+            StringComparer.OrdinalIgnoreCase);
+        var usedByPreviewBranch = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var line in sections.SelectMany(section => section.Lines))
+        {
+            var cycle = CycleValuesRegex().Match(line);
+            if (cycle.Success && values.TryGetValue(cycle.Groups["variable"].Value, out var cycleValues))
+            {
+                foreach (var rawValue in cycle.Groups["values"].Value.Split(','))
+                {
+                    if (double.TryParse(rawValue.Trim(), NumberStyles.Float, CultureInfo.InvariantCulture, out var parsed))
+                    {
+                        AddUnique(cycleValues, parsed);
+                    }
+                }
+
+                usedByPreviewBranch.Add(cycle.Groups["variable"].Value);
+            }
+
+            foreach (Match comparison in VariantComparisonValueRegex().Matches(line))
+            {
+                var variable = comparison.Groups["variable"].Value;
+                if (!values.TryGetValue(variable, out var comparisonValues)
+                    || !double.TryParse(
+                        comparison.Groups["value"].Value,
+                        NumberStyles.Float,
+                        CultureInfo.InvariantCulture,
+                        out var parsed))
+                {
+                    continue;
+                }
+
+                AddUnique(comparisonValues, parsed);
+                usedByPreviewBranch.Add(variable);
+            }
+        }
+
+        var relativeIniPath = Path.GetRelativePath(root, iniPath).Replace('\\', '/');
+        var result = new List<VariantDefinition>();
+        foreach (var variable in persistentVariables)
+        {
+            var availableValues = values[variable.Name];
+            if (!usedByPreviewBranch.Contains(variable.Name) || availableValues.Count < 2)
+            {
+                continue;
+            }
+
+            var key = $"{relativeIniPath}::{variable.Name.ToLowerInvariant()}";
+            var selected = new ModelPreviewVariant(
+                key,
+                variable.Name,
+                relativeIniPath,
+                variable.DefaultValue,
+                variable.DefaultValue,
+                availableValues.ToArray());
+            result.Add(new VariantDefinition(variable.Name, selected));
+        }
+
+        return result;
+    }
+
+    private static IniDocument ApplyVariantValues(
+        IniDocument document,
+        IReadOnlyDictionary<string, double> requestedValues)
+    {
+        var constants = new Dictionary<string, double>(document.Constants, StringComparer.OrdinalIgnoreCase);
+        var variants = new List<VariantDefinition>(document.Variants.Count);
+        foreach (var variant in document.Variants)
+        {
+            var selectedValue = variant.Selected.DefaultValue;
+            if (requestedValues.TryGetValue(variant.Selected.Key, out var requested))
+            {
+                var matchingValue = variant.Selected.Values.FirstOrDefault(value => AreEqual(value, requested));
+                if (variant.Selected.Values.Any(value => AreEqual(value, requested)))
+                {
+                    selectedValue = matchingValue;
+                }
+            }
+
+            constants[variant.Variable] = selectedValue;
+            variants.Add(variant with
+            {
+                Selected = variant.Selected with { SelectedValue = selectedValue }
+            });
+        }
+
+        return document with { Constants = constants, Variants = variants };
+    }
+
+    private static void AddUnique(List<double> values, double value)
+    {
+        if (!values.Any(existing => AreEqual(existing, value)))
+        {
+            values.Add(value);
+        }
+    }
+
+    private static bool AreEqual(double left, double right) =>
+        Math.Abs(left - right) <= 0.000001 * Math.Max(1, Math.Max(Math.Abs(left), Math.Abs(right)));
+
+    private static SourceStamp ComputeSourceStamp(string root)
+    {
+        const ulong offsetBasis = 14695981039346656037;
+        const ulong prime = 1099511628211;
+        var hash = offsetBasis;
+        var sourceFileCount = 0;
+        var inspected = 0;
+        foreach (var path in Directory.EnumerateFiles(root, "*", Enumeration)
+                     .OrderBy(path => path, StringComparer.OrdinalIgnoreCase))
+        {
+            if (++inspected > MaximumInspectedFiles)
+            {
+                break;
+            }
+
+            if (!IsPreviewSourceFile(path))
+            {
+                continue;
+            }
+
+            var file = new FileInfo(path);
+            AddHashValue(ref hash, Path.GetRelativePath(root, path), prime);
+            AddHashValue(ref hash, file.Length, prime);
+            AddHashValue(ref hash, file.LastWriteTimeUtc.Ticks, prime);
+            sourceFileCount++;
+        }
+
+        return new SourceStamp(hash, sourceFileCount);
+    }
+
+    private static bool IsPreviewSourceFile(string path)
+    {
+        var extension = Path.GetExtension(path);
+        return extension.Equals(".ini", StringComparison.OrdinalIgnoreCase)
+            || extension.Equals(".buf", StringComparison.OrdinalIgnoreCase)
+            || extension.Equals(".ib", StringComparison.OrdinalIgnoreCase)
+            || extension.Equals(".dds", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static void AddHashValue(ref ulong hash, string value, ulong prime)
+    {
+        foreach (var character in value)
+        {
+            hash ^= character;
+            hash *= prime;
+        }
+
+        hash ^= 0xFF;
+        hash *= prime;
+    }
+
+    private static void AddHashValue(ref ulong hash, long value, ulong prime)
+    {
+        for (var shift = 0; shift < 64; shift += 8)
+        {
+            hash ^= (byte)(value >> shift);
+            hash *= prime;
+        }
+    }
+
+    private static string BuildSelectionKey(IReadOnlyDictionary<string, double> variantValues) =>
+        string.Join(
+            ';',
+            variantValues
+                .OrderBy(item => item.Key, StringComparer.OrdinalIgnoreCase)
+                .Select(item => $"{item.Key}={item.Value.ToString("R", CultureInfo.InvariantCulture)}"));
+
+    private static string NormalizeRoot(string root) =>
+        root.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar).ToUpperInvariant();
+
+    private bool TryGetCachedScene(SceneCacheKey key, TimeSpan lookupDuration, out ModelPreviewScene scene)
+    {
+        lock (_cacheGate)
+        {
+            if (!_sceneCache.TryGetValue(key, out var node))
+            {
+                scene = null!;
+                return false;
+            }
+
+            _sceneLru.Remove(node);
+            _sceneLru.AddFirst(node);
+            scene = node.Value.Scene with
+            {
+                Diagnostics = node.Value.Scene.Diagnostics with
+                {
+                    CacheHit = true,
+                    LoadDuration = lookupDuration
+                }
+            };
+            return true;
+        }
+    }
+
+    private void AddCachedScene(SceneCacheKey key, ModelPreviewScene scene)
+    {
+        var estimatedBytes = EstimateSceneBytes(scene);
+        if (estimatedBytes > MaximumCachedSceneBytes)
+        {
+            return;
+        }
+
+        lock (_cacheGate)
+        {
+            foreach (var stale in _sceneLru
+                         .Where(entry => string.Equals(entry.Key.Root, key.Root, StringComparison.OrdinalIgnoreCase)
+                             && entry.Key.SourceStamp != key.SourceStamp)
+                         .ToList())
+            {
+                RemoveCachedScene(stale.Key);
+            }
+
+            RemoveCachedScene(key);
+            var entry = new SceneCacheEntry(key, scene, estimatedBytes);
+            var node = _sceneLru.AddFirst(entry);
+            _sceneCache[key] = node;
+            _cachedSceneBytes += estimatedBytes;
+            while (_sceneLru.Count > MaximumCachedScenes || _cachedSceneBytes > MaximumCachedSceneBytes)
+            {
+                var oldest = _sceneLru.Last;
+                if (oldest is null)
+                {
+                    break;
+                }
+
+                RemoveCachedScene(oldest.Value.Key);
+            }
+        }
+    }
+
+    private void RemoveCachedScene(SceneCacheKey key)
+    {
+        if (!_sceneCache.Remove(key, out var node))
+        {
+            return;
+        }
+
+        _sceneLru.Remove(node);
+        _cachedSceneBytes -= node.Value.EstimatedBytes;
+    }
+
+    private static long EstimateSceneBytes(ModelPreviewScene scene)
+    {
+        var geometryBytes = scene.Meshes.Sum(mesh =>
+            ((long)mesh.Positions.Length * 12)
+            + ((long)mesh.Normals.Length * 12)
+            + ((long)mesh.TextureCoordinates.Length * 8)
+            + ((long)mesh.Indices.Length * sizeof(int)));
+        var textureBytes = scene.Meshes
+            .SelectMany(EnumerateTextures)
+            .Where(texture => texture is not null)
+            .Cast<ModelPreviewTexture>()
+            .DistinctBy(texture => texture.SourceFile, StringComparer.OrdinalIgnoreCase)
+            .Sum(texture => (long)texture.Bgra32Pixels.Length);
+        return checked(geometryBytes + textureBytes);
     }
 
     private static IReadOnlyList<string> ReadLines(string path)
@@ -801,13 +1276,20 @@ public sealed partial class ZzmiModelPreviewLoader : IModModelPreviewLoader
         float.IsFinite(value.X) && float.IsFinite(value.Y) && float.IsFinite(value.Z);
 
     private sealed record IniDocument(
+        string IniPath,
         IReadOnlyList<IniSection> Sections,
         IReadOnlyDictionary<string, ResourceDefinition> Resources,
-        IReadOnlyDictionary<string, double> Constants);
+        IReadOnlyDictionary<string, double> Constants,
+        IReadOnlyList<VariantDefinition> Variants);
 
     private sealed record IniSection(string Name, List<string> Lines);
     private sealed record ResourceDefinition(string Name, string FilePath, int? Stride, string? Format);
+    private sealed record PersistentVariable(string Name, double DefaultValue);
+    private sealed record VariantDefinition(string Variable, ModelPreviewVariant Selected);
     private sealed record VertexStreams(Vector3[] Positions, Vector3[] Normals, Vector2[] TextureCoordinates);
+    private sealed record SceneCacheEntry(SceneCacheKey Key, ModelPreviewScene Scene, long EstimatedBytes);
+    private readonly record struct SceneCacheKey(string Root, ulong SourceStamp, string SelectionKey);
+    private readonly record struct SourceStamp(ulong Value, int FileCount);
     private readonly record struct DrawRange(int Count, int FirstIndex, int BaseVertex);
     private readonly record struct ConditionFrame(bool ParentActive, bool BranchTaken, bool Active);
 
@@ -820,11 +1302,29 @@ public sealed partial class ZzmiModelPreviewLoader : IModModelPreviewLoader
     [GeneratedRegex(@"^\s*(?:global\s+)?(?:persist\s+)?(?<variable>\$[A-Za-z0-9_]+)\s*=\s*(?<value>-?\d+(?:\.\d+)?)", RegexOptions.IgnoreCase)]
     private static partial Regex ConstantRegex();
 
+    [GeneratedRegex(@"^\s*global\s+persist\s+(?<variable>\$[A-Za-z0-9_]+)(?:\s*=\s*(?<value>-?\d+(?:\.\d+)?))?\s*(?:[;#].*)?$", RegexOptions.IgnoreCase)]
+    private static partial Regex PersistentVariableRegex();
+
+    [GeneratedRegex(@"^\s*(?<variable>\$[A-Za-z0-9_]+)\s*=\s*(?<values>-?\d+(?:\.\d+)?(?:\s*,\s*-?\d+(?:\.\d+)?)+)\s*(?:[;#].*)?$", RegexOptions.IgnoreCase)]
+    private static partial Regex CycleValuesRegex();
+
+    [GeneratedRegex(@"(?<variable>\$[A-Za-z0-9_]+)\s*(?:==|!=|>=|<=|>|<)\s*(?<value>-?\d+(?:\.\d+)?)", RegexOptions.IgnoreCase)]
+    private static partial Regex VariantComparisonValueRegex();
+
     [GeneratedRegex(@"^\s*ib\s*=\s*(?<resource>Resource[A-Za-z0-9_.-]+)\s*$", RegexOptions.IgnoreCase)]
     private static partial Regex IndexBindingRegex();
 
     [GeneratedRegex(@"^\s*Resource\\ZZMI\\Diffuse\s*=\s*ref\s+(?<resource>Resource[A-Za-z0-9_.-]+)\s*$", RegexOptions.IgnoreCase)]
     private static partial Regex DiffuseBindingRegex();
+
+    [GeneratedRegex(@"^\s*Resource\\ZZMI\\LightMap\s*=\s*ref\s+(?<resource>Resource[A-Za-z0-9_.-]+)\s*$", RegexOptions.IgnoreCase)]
+    private static partial Regex LightMapBindingRegex();
+
+    [GeneratedRegex(@"^\s*Resource\\ZZMI\\NormalMap\s*=\s*ref\s+(?<resource>Resource[A-Za-z0-9_.-]+)\s*$", RegexOptions.IgnoreCase)]
+    private static partial Regex NormalMapBindingRegex();
+
+    [GeneratedRegex(@"^\s*Resource\\ZZMI\\MaterialMap\s*=\s*ref\s+(?<resource>Resource[A-Za-z0-9_.-]+)\s*$", RegexOptions.IgnoreCase)]
+    private static partial Regex MaterialMapBindingRegex();
 
     [GeneratedRegex(@"^\s*drawindexed\s*=\s*(?<count>\d+)\s*,\s*(?<first>\d+)\s*,\s*(?<base>-?\d+)\s*$", RegexOptions.IgnoreCase)]
     private static partial Regex DrawIndexedRegex();
@@ -835,6 +1335,9 @@ public sealed partial class ZzmiModelPreviewLoader : IModModelPreviewLoader
     [GeneratedRegex(@"\s*&&\s*")]
     private static partial Regex AndRegex();
 
-    [GeneratedRegex(@"^(?<variable>\$[A-Za-z0-9_]+)\s*(?<operator>==|!=|>=|<=|>|<)\s*(?<value>-?\d+(?:\.\d+)?)$", RegexOptions.IgnoreCase)]
+    [GeneratedRegex(@"^(?<variable>\$(?:[A-Za-z0-9_.-]+|\\[A-Za-z0-9_.-]+(?:\\[A-Za-z0-9_.-]+)*))\s*(?<operator>==|!=|>=|<=|>|<)\s*(?<value>-?\d+(?:\.\d+)?)$", RegexOptions.IgnoreCase)]
     private static partial Regex ComparisonRegex();
+
+    [GeneratedRegex(@"^(?<variable>\$(?:[A-Za-z0-9_.-]+|\\[A-Za-z0-9_.-]+(?:\\[A-Za-z0-9_.-]+)*))$", RegexOptions.IgnoreCase)]
+    private static partial Regex VariableExpressionRegex();
 }

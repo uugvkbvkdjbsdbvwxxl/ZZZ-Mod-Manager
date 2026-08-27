@@ -45,6 +45,7 @@ public partial class MainWindow : Window
     private readonly ModPresetStore _presets;
     private readonly DependencyResolver _dependencyResolver;
     private readonly IModModelPreviewLoader _modelPreviewLoader;
+    private readonly CharacterFaceCaptureService _faceCapture;
     private readonly IGameModReloadService _gameInput;
     private readonly LiveModSwitchService _liveSwitch;
     private readonly GameModStateCoordinator _stateCoordinator;
@@ -110,6 +111,7 @@ public partial class MainWindow : Window
         _presets = new ModPresetStore(_paths, _store);
         _dependencyResolver = new DependencyResolver(_paths);
         _modelPreviewLoader = new ZzmiModelPreviewLoader();
+        _faceCapture = new CharacterFaceCaptureService(_paths, _store, () => _config.GameExecutablePath);
         _gameInput = new GameModReloadService();
         IReadOnlyList<UnmanagedDirectoryChange> quarantined = [];
         if (!_gameInput.IsGameRunning(_config.GameExecutablePath))

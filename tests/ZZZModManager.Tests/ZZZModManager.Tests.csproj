@@ -27,5 +27,11 @@
     <None Include="..\..\src\ZZZModManager\Themes\LightPalette.xaml"
           Link="Fixtures\LightPalette.xaml"
           CopyToOutputDirectory="PreserveNewest" />
+    <None Include="..\..\src\ZZZModManager\ModelPreviewWindow.cs"
+          Link="Fixtures\ModelPreviewWindow.cs"
+          CopyToOutputDirectory="PreserveNewest" />
+    <None Include="..\..\src\ZZZModManager\ModVersionWindows.cs"
+          Link="Fixtures\ModVersionWindows.cs"
+          CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 </Project>

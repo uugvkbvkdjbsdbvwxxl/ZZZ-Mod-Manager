@@ -6,6 +6,7 @@ using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
+using Microsoft.Win32;
 using ZZZModManager.Infrastructure;
 using ZZZModManager.Models;
 using ZZZModManager.Services;
@@ -401,7 +402,10 @@ public partial class MainWindow
         {
             var scene = await Task.Run(() => _modelPreviewLoader.Load(card.DirectoryPath));
             SetBusy(false);
-            new ModelPreviewWindow(card.DisplayName, scene) { Owner = this }.ShowDialog();
+            new ModelPreviewWindow(card.DisplayName, card.DirectoryPath, _modelPreviewLoader, scene, _faceCapture)
+            {
+                Owner = this
+            }.ShowDialog();
         }
         catch (ModelPreviewException ex)
         {
@@ -500,6 +504,156 @@ public partial class MainWindow
             RefreshView();
             ShowToast("角色分组已更新；同角色单选会在下次启用时执行。");
         }
+    }
+
+    private async void UpdateModArchive_Click(object sender, RoutedEventArgs e)
+    {
+        if (CardOf(sender) is not ModCardViewModel card)
+        {
+            return;
+        }
+
+        var dialog = new OpenFileDialog
+        {
+            Title = $"选择用于更新 {card.DisplayName} 的压缩包",
+            Filter = "Mod 压缩包|*.zip;*.7z;*.rar|所有文件|*.*",
+            CheckFileExists = true
+        };
+        if (dialog.ShowDialog(this) == true)
+        {
+            await UpdateModFromSourceAsync(card, dialog.FileName);
+        }
+    }
+
+    private async void UpdateModFolder_Click(object sender, RoutedEventArgs e)
+    {
+        if (CardOf(sender) is not ModCardViewModel card)
+        {
+            return;
+        }
+
+        var dialog = new OpenFolderDialog { Title = $"选择用于更新 {card.DisplayName} 的 Mod 文件夹" };
+        if (dialog.ShowDialog(this) == true)
+        {
+            await UpdateModFromSourceAsync(card, dialog.FolderName);
+        }
+    }
+
+    private async Task UpdateModFromSourceAsync(ModCardViewModel card, string sourcePath)
+    {
+        if (_busy)
+        {
+            return;
+        }
+
+        if (_stateCoordinator.IsGameRunning)
+        {
+            ShowToast("游戏运行时不能替换已加载资源，请先退出游戏。", true);
+            return;
+        }
+
+        ImportSession? session = null;
+        SetBusy(true, $"正在分析 {card.DisplayName} 的更新…");
+        try
+        {
+            session = await _importer.StageAsync(sourcePath);
+            var candidates = SelectCandidates(session.Candidates);
+            if (candidates is null)
+            {
+                return;
+            }
+
+            if (candidates.Count != 1)
+            {
+                ShowToast("更新单个 Mod 时必须只选择一个候选项。", true);
+                return;
+            }
+
+            var candidate = candidates[0];
+            var report = await Task.Run(() => _validator.ValidateAndRepair(candidate));
+            candidate.Report = report;
+            if (report.Status == ImportStatus.Blocked)
+            {
+                ShowToast("候选更新未通过安全校验，安装副本未改变。", true);
+                return;
+            }
+
+            var preview = await Task.Run(() => _library.PreviewUpdate(card.Manifest.Id, candidate.StagedPath));
+            SetBusy(false);
+            var review = new ModUpdateReviewWindow(card.DisplayName, candidate.DisplayName, preview) { Owner = this };
+            if (review.ShowDialog() != true)
+            {
+                return;
+            }
+
+            SetBusy(true, $"正在备份并更新 {card.DisplayName}…");
+            await Task.Run(() => _library.Update(card.Manifest.Id, candidate, report));
+            _modelPreviewLoader.Invalidate(card.DirectoryPath);
+            RebuildLiveSwitchAfterVersionChange();
+            Log($"已更新安装副本：{card.DisplayName}；新增 {preview.AddedCount}、修改 {preview.ModifiedCount}、移除 {preview.RemovedCount}。");
+            ShowToast($"{card.DisplayName} 已更新到安装副本 v{card.Manifest.VersionRevision}，旧版本已备份。");
+        }
+        catch (Exception ex)
+        {
+            ShowError("更新 Mod 失败", ex);
+        }
+        finally
+        {
+            if (session is not null)
+            {
+                _importer.Cleanup(session);
+            }
+
+            SetBusy(false);
+            RefreshView();
+        }
+    }
+
+    private async void ModVersionHistory_Click(object sender, RoutedEventArgs e)
+    {
+        if (CardOf(sender) is not ModCardViewModel card || _busy)
+        {
+            return;
+        }
+
+        try
+        {
+            var backups = await Task.Run(() => _library.GetVersionBackups(card.Manifest.Id));
+            var history = new ModVersionHistoryWindow(card.DisplayName, backups) { Owner = this };
+            if (history.ShowDialog() != true || history.SelectedBackupId is null)
+            {
+                return;
+            }
+
+            if (_stateCoordinator.IsGameRunning)
+            {
+                ShowToast("游戏运行时不能回滚已加载资源，请先退出游戏。", true);
+                return;
+            }
+
+            SetBusy(true, $"正在回滚 {card.DisplayName}…");
+            await Task.Run(() => _library.Rollback(card.Manifest.Id, history.SelectedBackupId));
+            _modelPreviewLoader.Invalidate(card.DirectoryPath);
+            RebuildLiveSwitchAfterVersionChange();
+            Log($"已回滚安装副本：{card.DisplayName} · {history.SelectedBackupId}");
+            ShowToast($"{card.DisplayName} 已回滚；回滚前版本也已保留。");
+        }
+        catch (Exception ex)
+        {
+            ShowError("回滚 Mod 失败", ex);
+        }
+        finally
+        {
+            SetBusy(false);
+            RefreshView();
+        }
+    }
+
+    private void RebuildLiveSwitchAfterVersionChange()
+    {
+        _ = _liveSwitch.PrepareAll(_library.GetAll());
+        _library.SaveChanges();
+        _stateCoordinator.MarkControlFilesChanged();
     }
 
     private void DeleteMod_Click(object sender, RoutedEventArgs e)

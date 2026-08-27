@@ -103,19 +103,21 @@ public sealed class ImportReport
 
 public sealed class ModManifest
 {
-    public int SchemaVersion { get; set; } = 2;
+    public int SchemaVersion { get; set; } = 3;
     public string Id { get; init; } = string.Empty;
     public string DisplayName { get; init; } = string.Empty;
-    public string SourcePath { get; init; } = string.Empty;
-    public string SourceSha256 { get; init; } = string.Empty;
+    public string SourcePath { get; set; } = string.Empty;
+    public string SourceSha256 { get; set; } = string.Empty;
     public string InstalledDirectory { get; set; } = string.Empty;
     public DateTimeOffset ImportedAt { get; init; } = DateTimeOffset.UtcNow;
+    public DateTimeOffset? UpdatedAt { get; set; }
+    public int VersionRevision { get; set; } = 1;
     public bool Enabled { get; set; }
-    public ImportStatus ImportStatus { get; init; }
-    public HashSet<string> Hashes { get; init; } = new(StringComparer.OrdinalIgnoreCase);
-    public List<string> Dependencies { get; init; } = [];
-    public List<AppliedFix> AppliedFixes { get; init; } = [];
-    public string ReportFile { get; init; } = "import-report.json";
+    public ImportStatus ImportStatus { get; set; }
+    public HashSet<string> Hashes { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+    public List<string> Dependencies { get; set; } = [];
+    public List<AppliedFix> AppliedFixes { get; set; } = [];
+    public string ReportFile { get; set; } = "import-report.json";
 
     // A stable, manager-owned hotkey used for live enable/disable while the
     // game is running.  These fields are deliberately separate from the
@@ -129,6 +131,57 @@ public sealed class ModManifest
     public string? LiveSwitchBlockReason { get; set; }
     public string? PreviewFile { get; set; }
     public string? CharacterGroupOverrideKey { get; set; }
+}
+
+public enum ModFileDifferenceKind
+{
+    Added,
+    Modified,
+    Removed,
+    Unchanged
+}
+
+public sealed record ModFileDifference(
+    string RelativePath,
+    ModFileDifferenceKind Kind,
+    long PreviousBytes,
+    long NewBytes);
+
+public sealed class ModUpdatePreview
+{
+    public IReadOnlyList<ModFileDifference> Files { get; init; } = [];
+    public int AddedCount => Files.Count(file => file.Kind == ModFileDifferenceKind.Added);
+    public int ModifiedCount => Files.Count(file => file.Kind == ModFileDifferenceKind.Modified);
+    public int RemovedCount => Files.Count(file => file.Kind == ModFileDifferenceKind.Removed);
+    public int UnchangedCount => Files.Count(file => file.Kind == ModFileDifferenceKind.Unchanged);
+    public bool HasChanges => AddedCount + ModifiedCount + RemovedCount > 0;
+}
+
+public sealed class ModVersionSnapshot
+{
+    public string SourcePath { get; init; } = string.Empty;
+    public string SourceSha256 { get; init; } = string.Empty;
+    public ImportStatus ImportStatus { get; init; }
+    public HashSet<string> Hashes { get; init; } = new(StringComparer.OrdinalIgnoreCase);
+    public List<string> Dependencies { get; init; } = [];
+    public List<AppliedFix> AppliedFixes { get; init; } = [];
+    public string ReportFile { get; init; } = "import-report.json";
+    public string? PreviewFile { get; init; }
+    public DateTimeOffset? UpdatedAt { get; init; }
+    public int VersionRevision { get; init; } = 1;
+}
+
+public sealed class ModVersionBackup
+{
+    public int SchemaVersion { get; init; } = 1;
+    public string BackupId { get; init; } = string.Empty;
+    public string ModId { get; init; } = string.Empty;
+    public string DisplayName { get; init; } = string.Empty;
+    public DateTimeOffset CreatedAt { get; init; } = DateTimeOffset.UtcNow;
+    public string Reason { get; init; } = string.Empty;
+    public int FileCount { get; init; }
+    public long TotalBytes { get; init; }
+    public ModVersionSnapshot Snapshot { get; init; } = new();
 }
 
 public sealed class LibraryState

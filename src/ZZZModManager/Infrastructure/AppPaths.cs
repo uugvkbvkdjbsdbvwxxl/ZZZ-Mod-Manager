@@ -6,6 +6,9 @@ public sealed class AppPaths
     public string ModsRoot => Path.Combine(Root, "Mods");
     public string StagingRoot => Path.Combine(Root, "Staging");
     public string BackupsRoot => Path.Combine(Root, "Backups");
+    public string ModBackupsRoot => Path.Combine(BackupsRoot, "Mods");
+    public string CacheRoot => Path.Combine(Root, "Cache");
+    public string CharacterFaceCacheRoot => Path.Combine(CacheRoot, "BaseCharacters");
     public string LogsRoot => Path.Combine(Root, "Logs");
     public string DependenciesRoot => Path.Combine(Root, "Dependencies");
     public string RuntimeRoot => Path.Combine(Root, "Runtime", "ZZMI");
@@ -38,6 +41,9 @@ public sealed class AppPaths
         Directory.CreateDirectory(ModsRoot);
         Directory.CreateDirectory(StagingRoot);
         Directory.CreateDirectory(BackupsRoot);
+        Directory.CreateDirectory(ModBackupsRoot);
+        Directory.CreateDirectory(CacheRoot);
+        Directory.CreateDirectory(CharacterFaceCacheRoot);
         Directory.CreateDirectory(LogsRoot);
         Directory.CreateDirectory(DependenciesRoot);
         Directory.CreateDirectory(RuntimeRoot);

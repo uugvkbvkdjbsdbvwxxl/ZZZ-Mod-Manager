@@ -15,6 +15,7 @@ artifacts/
 
 # User data and runtime state
 Backups/
+Cache/
 Dependencies/
 Downloads/
 Logs/
@@ -24,5 +25,6 @@ Staging/
 UI/
 config.json
 library.json
+characters.json
 runtime-manifest.json
 *.log
